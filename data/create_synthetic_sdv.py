@@ -7,12 +7,12 @@ import os
 
 # Definizione dei percorsi
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
-INPUT_FILE = os.path.join(DATA_DIR, 'test_data_3.csv')
-CSV_OUTPUT = os.path.join(DATA_DIR, 'synthetic_data_sdv.csv')
+INPUT_FILE = os.path.join(DATA_DIR, 'test_data.csv')
+# CSV_OUTPUT = os.path.join(DATA_DIR, 'synthetic_data_sdv.csv')
 PARQUET_OUTPUT = os.path.join(DATA_DIR, 'synthetic_data_sdv.parquet')
 PLOT_OUTPUT = os.path.join(DATA_DIR, 'visual_evaluation.html')
 
-def generate_synthetic_data(num_rows=1000):      # ho impostato 1000 righe come default per non esagerare, poichè faccio anche il salvataggio in CSV 
+def generate_synthetic_data(num_rows=100000):      # ho impostato 100000 righe per la simulazione totale del dataset sintetico.
     print(f"Caricamento dati da {INPUT_FILE}...")
     data = pd.read_csv(INPUT_FILE)
     
@@ -64,7 +64,7 @@ def generate_synthetic_data(num_rows=1000):      # ho impostato 1000 righe come 
     synthetic_data.to_parquet(PARQUET_OUTPUT, index=False)
     
     # salvataggio in CSV (in questo caso solo per le prove, per vedere come si comportano i dati sintetici)
-    synthetic_data.to_csv(CSV_OUTPUT, index=False)
+    #synthetic_data.to_csv(CSV_OUTPUT, index=False)
 
     print("Generazione completata con successo.")
     return synthetic_data
