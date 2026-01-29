@@ -28,7 +28,22 @@ def generate_synthetic_data(num_rows=100000):
     # Sensor values generation
     synthetic_data = synthesizer.sample(num_rows=num_rows)
     
-    # Timeline synchronization (5 machines every 30 seconds)
+    # LOGICAL CONSISTENCY FIX (Is_Anomaly vs Anomaly_Type)
+    print("Fixing logical inconsistencies in Anomaly reporting...")
+    
+    # here we get unique real anomalies excluding 'None'
+    real_anomalies = [a for a in data['Anomaly_Type'].unique() if str(a) != 'None']
+    
+    # First step: If Is_Anomaly is 1 but Anomaly_Type is 'None' -> Assign a random real anomaly
+    mask_fix_type = (synthetic_data['Is_Anomaly'] == 1) & (synthetic_data['Anomaly_Type'] == 'None')
+    if mask_fix_type.any():
+        synthetic_data.loc[mask_fix_type, 'Anomaly_Type'] = np.random.choice(real_anomalies, size=mask_fix_type.sum())
+    
+    # Second step: If Is_Anomaly is 0 -> Anomaly_Type MUST be 'None'
+    mask_fix_zero = (synthetic_data['Is_Anomaly'] == 0)
+    synthetic_data.loc[mask_fix_zero, 'Anomaly_Type'] = 'None'
+    
+    # Here we solve the timeline synchronization (5 machines every 30 seconds)
     # This ensures logical order and solves the 1970 date bug
     num_machines = 5
     num_steps = num_rows // num_machines
@@ -40,7 +55,7 @@ def generate_synthetic_data(num_rows=100000):
     synthetic_data['Machine_ID'] = (['WM_01', 'WM_02', 'WM_03', 'WM_04', 'WM_05'] * num_steps)[:num_rows]
     
     # quality evaluation (overall score)
-    full_metadata = Metadata.detect_from_dataframe(data) 
+    full_metadata = Metadata.detect_from_dataframe(data)
     report = evaluate_quality(data, synthetic_data, full_metadata)
     print(f"\n✅ DATASET QUALITY: {report.get_score() * 100:.2f}%")
     
