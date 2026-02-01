@@ -45,8 +45,8 @@ def start_streaming():
 
         # 3. Flush & Sleep
         producer.flush() # Forces the message out immediately
-        print(f"Waiting 30s before next record...")
-        time.sleep(30)
+        print(f"Waiting 1s before next record...") # remember to change it to 30 sec!!
+        time.sleep(1)
 
 
 if __name__ == "__main__":
