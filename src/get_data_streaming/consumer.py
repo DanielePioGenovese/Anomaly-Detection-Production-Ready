@@ -7,33 +7,44 @@ from confluent_kafka import Consumer, KafkaError
 from pydantic import BaseModel, ValidationError, Field
 from typing import Optional
 
+from config import Config
+
 # ------------------------------
 # Updated Pydantic model based on actual data structure
 # ------------------------------
 class TelemetryData(BaseModel):
-    """
-    Flexible telemetry data model.
-    Based on the error, we know the data includes:
-    - Machine_ID (required)
-    - Cycle_Phase_ID (present in messages)
-    - Current (present in messages)
-    - Temperature (OPTIONAL - not always present!)
-    """
+    # --- Identifiers ---
+    timestamp: str
     Machine_ID: str
     Cycle_Phase_ID: Optional[int] = None
-    Current: Optional[float] = None
-    Temperature: Optional[float] = None  # Make it optional!
-    Pressure: Optional[float] = None
-    Vibration: Optional[float] = None
-    Humidity: Optional[float] = None
-    Power_Consumption: Optional[float] = None
-    Operational_Status: Optional[str] = None
-    Error_Code: Optional[str] = None
-    Production_Count: Optional[int] = None
+
+    # --- Electrical Metrics (L1, L2, L3) ---
+    Current_L1: Optional[float] = None
+    Current_L2: Optional[float] = None
+    Current_L3: Optional[float] = None
+    Voltage_L_L: Optional[float] = None
     
-    # Add any other fields you discover
+    # --- Power Metrics ---
+    Active_Power: Optional[float] = None
+    Reactive_Power: Optional[float] = None
+    Power_Factor: Optional[float] = None
+    Power_Variance_10s: Optional[float] = None
+    Energy_per_Cycle: Optional[float] = None
+
+    # --- Quality & Anomalous Indicators ---
+    THD_Current: Optional[float] = None
+    THD_Voltage: Optional[float] = None
+    Current_Peak_to_Peak: Optional[float] = None
+    Inrush_Current_Peak: Optional[float] = None
+    Inrush_Duration: Optional[float] = None
+    Phase_Imbalance_Ratio: Optional[float] = None
+
+    # --- Labels (Optional during real-time inference) ---
+    Is_Anomaly: Optional[int] = None
+    Anomaly_Type: Optional[str] = None
+
     class Config:
-        extra = "allow"  # Allow extra fields without error
+        extra = "allow"
 
 # ------------------------------
 # Kafka consumer setup
@@ -52,7 +63,7 @@ def get_consumer() -> Consumer:
 # ------------------------------
 def start_consuming():
     consumer = get_consumer()
-    topic = 'telemetry-data'
+    topic = Config.TOPIC_TELEMETRY
     consumer.subscribe([topic])
     print(f"📥 Listening on topic '{topic}'... (CTRL+C to stop)\n")
 

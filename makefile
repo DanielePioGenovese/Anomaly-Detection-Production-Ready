@@ -31,10 +31,10 @@ down:
 
 # --- 3. Single Components (Manual Mode) ---
 consumer:
-	$(PYTHON) -m src.get_data_streaming.throw_data
+	$(PYTHON) -m src.get_data_streaming.consumer
 
 producer:
-	$(PYTHON) -m src.app
+	$(PYTHON) -m src.get_data_streaming.producer
 
 # --- 4. Maintenance ---
 clean:

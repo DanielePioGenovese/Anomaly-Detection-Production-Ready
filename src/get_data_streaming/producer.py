@@ -48,3 +48,6 @@ def start_streaming():
         print(f"Waiting 30s before next record...")
         time.sleep(30)
 
+
+if __name__ == "__main__":
+    start_streaming()
