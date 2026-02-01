@@ -9,7 +9,7 @@ project_root = Path(__file__).resolve().parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
-from config.config import Config
+from config import Config
 # ----------------------------------
 
 def split_streaming_training(input_path: Path = Config.SYNTHETIC_OUTPUT_PATH):

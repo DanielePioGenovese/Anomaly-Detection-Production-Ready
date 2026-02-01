@@ -13,7 +13,7 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
 
-from config.config import Config
+from config import Config
 # ----------------------------------
 
 def generate_synthetic_data(num_rows=100000):

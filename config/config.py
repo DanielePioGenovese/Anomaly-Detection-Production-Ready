@@ -26,3 +26,7 @@ class Config:
     # Column Settings
     TARGET = "Is_Anomaly"
     DROP_COLUMNS = ['Is_Anomaly', 'Anomaly_Type', 'timestamp', 'Machine_ID']
+
+    # 2. Kafka Settings
+    KAFKA_SERVER = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+    TOPIC_TELEMETRY = "telemetry-data"
