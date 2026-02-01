@@ -1,56 +1,50 @@
 import time
 import pandas as pd
 import json
-from kafka import KafkaProducer
-from config import Config  
+from confluent_kafka import Producer
+from config import Config
 
+def delivery_report(err, msg):
+    """ Callback to confirm if the message reached Kafka. """
+    if err is not None:
+        print(f"❌ Delivery failed: {err}")
+    else:
+        print(f"✅ Sent: {msg.topic()} [Partition: {msg.partition()}]")
 
 def get_producer():
-    """Initialize the Kafka producer with low-latency optimized settings."""
-    return KafkaProducer(
-        bootstrap_servers=[Config.KAFKA_SERVER],
-        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-        # Optimizations for immediate sending (every 30s)
-        linger_ms=0,
-        acks=1
-    )
+    # Confluent-kafka uses 'bootstrap.servers' (with a dot) inside a dict
+    conf = {
+        'bootstrap.servers': Config.KAFKA_SERVER,
+        'linger.ms': 0,
+        'acks': 1
+    }
+    return Producer(conf)
 
-def simulate_sensor():
+def start_streaming():
     producer = get_producer()
 
-    # Load the dataset (CSV or Parquet depending on what you have)
     try:
-        df = pd.read_parquet(Config.RAW_DATA_PATH)
+        df = pd.read_parquet(Config.STREAMING_DATASET)
     except Exception as e:
-        print(f"Error while loading the file: {e}")
+        print(f"Error loading file: {e}")
         return
 
-    print(f"📡 Simulation started. Total records: {len(df)}")
+    print(f"📡 Simulation started. Records: {len(df)}")
 
-    for index, row in df.iterrows():
+    for _, row in df.iterrows():
+        # 1. Prepare data
         data = row.to_dict()
+        payload = json.dumps(data, default=str).encode('utf-8')
 
-        try:
-            # Send to the topic defined in Config
-            future = producer.send(Config.TOPIC_TELEMETRY, value=data)
+        # 2. Produce (Asynchronous)
+        producer.produce(
+            Config.TOPIC_TELEMETRY, 
+            value=payload, 
+            callback=delivery_report
+        )
 
-            # Wait for delivery confirmation
-            record_metadata = future.get(timeout=10)
-
-            print(
-                f"✅ [{index}] Sent: ID {data.get('Machine_ID', 'N/A')} "
-                f"to Partition {record_metadata.partition}"
-            )
-
-            # Make sure the message is sent now (not buffered)
-            producer.flush()
-
-        except Exception as e:
-            print(f"❌ Error while sending record {index}: {e}")
-
-        # Required 30-second interval
-        print("--- Waiting for 30 seconds ---")
+        # 3. Flush & Sleep
+        producer.flush() # Forces the message out immediately
+        print(f"Waiting 30s before next record...")
         time.sleep(30)
 
-if __name__ == "__main__":
-    simulate_sensor()

@@ -2,31 +2,36 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables if needed
 load_dotenv()
 
 class Config:
-    # 1. Project Root Definition
-    # Since this file is inside 'config/', we go up 2 levels to reach the root.
+    # 1. Project Root
+    # Path(__file__) is 'config/config_file.py' -> .parent is 'config/' -> .parent is 'root/'
     ROOT_DIR = Path(__file__).resolve().parent.parent
-    DATA_DIR = ROOT_DIR / "data"
+    
+    # 2. Kafka Settings (Matches Docker compose)
+    # We grab from .env, but provide 'localhost:9092' as a safe default
+    KAFKA_SERVER = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+    TOPIC_TELEMETRY = os.getenv('TOPIC_TELEMETRY', 'telemetry-data')
 
-    # 2. Specific Paths for Synthetic Data Creation
-    SYNTHETIC_DIR = ROOT_DIR / "data" / "synthetic_data_creation"
+    # 3. Data Directories
+    # Use the root + the folder name from .env
+    DATA_DIR = ROOT_DIR / "data"
+    STREAMING_DIR = DATA_DIR / os.getenv('STREAMING_DIR', 'streaming_data')
+    HISTORICAL_DIR = DATA_DIR / os.getenv('HISTORICAL_DIR', 'historical_data')
     
-    # 3. Input and Output Files
+    SYNTHETIC_DIR = DATA_DIR / "synthetic_data_creation"
+    
+    # 4. Files
     INPUT_DATA_PATH = SYNTHETIC_DIR / "test_data.csv"
-    
-    # Output: The Parquet file to be generated
     SYNTHETIC_OUTPUT_PATH = SYNTHETIC_DIR / "synthetic_data_sdv.parquet"
 
-    STREAMING_DIR = DATA_DIR / "streaming_data"
-    HISTORICAL_DIR = DATA_DIR / "historical_data"
-    
-    # Column Settings
-    TARGET = "Is_Anomaly"
-    DROP_COLUMNS = ['Is_Anomaly', 'Anomaly_Type', 'timestamp', 'Machine_ID']
+    STREAMING_DATASET = STREAMING_DIR / os.getenv('STREAMING_DATASET', '')
 
-    # 2. Kafka Settings
-    KAFKA_SERVER = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
-    TOPIC_TELEMETRY = "telemetry-data"
+    # 5. ML Settings
+    TARGET = os.getenv('TARGET_COLUMN', 'Is_Anomaly')
+    
+    # Logic for columns to drop:
+    # If the .env has "Col1,Col2", this converts it into a Python list ['Col1', 'Col2']
+    _drop_cols_str = os.getenv('COLUMNS_TO_DROP_TRAIN', 'Anomaly_Type,timestamp,Machine_ID')
+    DROP_COLUMNS = [c.strip() for c in _drop_cols_str.split(',')]

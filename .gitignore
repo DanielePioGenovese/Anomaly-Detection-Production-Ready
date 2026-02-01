@@ -21,3 +21,6 @@ ImportantThings.txt
 # Folders
 historical_data/
 streaming_data/
+
+# Kafka
+kafka_storage/
