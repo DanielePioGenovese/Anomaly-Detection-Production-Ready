@@ -15,8 +15,11 @@ from pydantic import ValidationError
 
 def run_anomaly_detection():
     consumer = get_consumer()
-    consumer.subscribe([Config.TOPIC_TELEMETRY])
-    print(f"🧠 Anomaly Detector running on RedPanda topic: {Config.TOPIC_TELEMETRY}...\n")
+    # Ora ascoltiamo il topic generato da Quix (Feature Engineering)
+    processed_topic = "processed-telemetry"
+    consumer.subscribe([processed_topic])
+    print(f"🧠 Anomaly Detector running on RedPanda topic: {processed_topic}...")
+    print(f"📡 In attesa delle feature calcolate da Quix...\n")
 
     try:
         while True:
