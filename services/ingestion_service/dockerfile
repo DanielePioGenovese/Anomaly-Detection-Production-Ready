@@ -1,0 +1,13 @@
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
+WORKDIR /ingestion
+
+COPY pyproject.toml uv.lock ./
+
+RUN uv sync --frozen --no-dev --group ingestion
+
+COPY services/ingestion_service/src ./src/
+
+COPY config .
+
+CMD ["uv", "run", "--group", "streaming", "src/feature_engineering.py"]
