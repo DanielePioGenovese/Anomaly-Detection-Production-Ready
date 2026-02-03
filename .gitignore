@@ -27,3 +27,9 @@ kafka_storage/
 
 # RedPanda
 redpanda_storage/
+
+# Logs
+training.log
+
+# testing
+test_predictions.csv
