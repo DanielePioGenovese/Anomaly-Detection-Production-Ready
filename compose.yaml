@@ -42,21 +42,25 @@ services:
       redpanda:
         condition: service_healthy
 
-  ingestion:
-    build:
-      context: .
-      dockerfile: services/ingestion_service/Dockerfile
-    ports:
-      - '9090:9090'
-    volumes:
-      - ./models:/ingestion/models
-      - ./config:/ingestion/config
+  # ingestion:
+  #   build:
+  #     context: .
+  #     dockerfile: services/ingestion_service/Dockerfile
+  #   ports:
+  #     - '9090:9090'
+  #   volumes:
+  #     - ./models:/ingestion/models
+  #     - ./config:/ingestion/config
 
   hist_ingestion:
     build: 
       context: .
       dockerfile: services/hist_ingestion/Dockerfile
-    ports:
-      - '9091:9091'
+    environment:
+      - APP_HOME=/hist_ingestion           
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092 
     volumes:
-      - 
+      - ./config:/hist_ingestion/config
+      - ./data:/hist_ingestion/data         
+      - ./models:/hist_ingestion/data/models 
+      - ./metrics:/hist_ingestion/data/metrics

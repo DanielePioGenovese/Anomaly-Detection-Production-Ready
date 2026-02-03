@@ -8,11 +8,12 @@ load_dotenv()
 class Config:
     # --- 1. Project Root ---
     # Points to: Progetto-Finale-Master-AI-2025-2026/
-    ROOT_DIR = Path(__file__).resolve().parent.parent
+    APP_HOME = os.getenv('APP_HOME', str(Path(__file__).resolve().parent.parent))
+    ROOT_DIR = Path(APP_HOME)
     
     # --- 2. Kafka Settings ---
     # Matches the 'KAFKA_ADVERTISED_LISTENERS' in your compose.yaml
-    KAFKA_SERVER = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:19092')
+    KAFKA_SERVER = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'redpanda:19092')
     TOPIC_TELEMETRY = os.getenv('TOPIC_TELEMETRY', 'telemetry-data')
     CONSUMER_GROUP = os.getenv('KAFKA_CONSUMER_GROUP', 'anomaly-detector-v1')
 
@@ -77,3 +78,5 @@ class IsolationForestConfig:
     MODEL_PATH = MODEL_DIR / MODEL_FILENAME
     SCALER_PATH = MODEL_DIR / SCALER_FILENAME
     METRICS_PATH = METRICS_DIR / METRICS_FILENAME
+
+    PREPROCESSOR_JOBLIB = MODEL_DIR / 'preprocessor.joblib'

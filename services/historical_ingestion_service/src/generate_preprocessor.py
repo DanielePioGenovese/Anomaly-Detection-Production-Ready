@@ -3,24 +3,24 @@ import logging
 import joblib
 import pandas as pd
 from pathlib import Path
+from config import IsolationForestConfig
 
 # Import your classes from your project files
-# Make sure the import paths match your folder structure
-from dataloader import DataLoader
-from services.historical_ingestion_service.src.hist_feature_engineering import DataPreprocessor
+from services.historical_ingestion_service.src import DataLoader, DataPreprocessor
 
 # Basic logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ArtifactGenerator")
 
-# Configure your paths here
-RAW_DATA_PATH = Path("data/historical")  # Where your parquet/csv files are
-OUTPUT_PATH = Path("models/preprocessor.joblib")  # Where streaming will look for the file
+RAW_DATA_PATH = Path(IsolationForestConfig.TRAIN_PATH)  
+OUTPUT_PATH = Path("models/preprocessor.joblib")
 
 def generate():
-    # 1. Load raw data
+    # 1. Load data
     logger.info("Loading data...")
     # DataLoader handles reading CSV/Parquet files
+
+    # ---- Loading the Historical data
     loader = DataLoader(data_dir=RAW_DATA_PATH)
     try:
         # Try loading parquet files first
@@ -31,6 +31,7 @@ def generate():
 
     # 2. Initialize the Preprocessor
     # Define columns to EXCLUDE from scaling (ID, timestamp, label)
+    # ---- Preprocessing data
     preprocessor = DataPreprocessor(
         label_columns=['Is_Anomaly', 'Anomaly_Type', 'Machine_ID', 'timestamp'],
         scaler_type='standard'
@@ -48,5 +49,3 @@ def generate():
     
     logger.info("✅ Done! You can now start streaming.")
 
-if __name__ == "__main__":
-    generate()

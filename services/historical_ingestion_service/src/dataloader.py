@@ -12,9 +12,6 @@ class DataLoader:
     """Class for data loading and preprocessing"""
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir)
-        self.scaler = StandardScaler()
-        self.feature_columns: Optional[List[str]] = None  # Stores the columns used for fitting
-        self.label_columns = ['Is_Anomaly', 'Anomaly_Type'] # label columns to exclude in preprocessing (present only in test set)
 
     def load_data(self, filename: str = "*.parquet") -> pd.DataFrame:
         """
