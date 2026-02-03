@@ -10,7 +10,7 @@ import pandas as pd
 from config import IsolationForestConfig
 
 from validation import ConfigValidator
-from dataloader import DataLoader
+from services.historical_ingestion_service.src import DataLoader
 from model import IsolationForestModel
 from metrics import MetricsCalculator
 
