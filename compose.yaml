@@ -78,15 +78,15 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=INFO
-      - DATA_DIR=/app/data
-      - MODELS_DIR=/app/models
-      - METRICS_DIR=/app/metrics
+      - DATA_DIR=/training/data
+      - MODELS_DIR=/training/models
+      - METRICS_DIR=/training/metrics
     volumes:
-      - ./data:/app/data
-      - ./models:/app/models
-      - ./metrics:/app/metrics
-      - ./logs/training:/app/logs
-      - ./services/training_service/config:/app/config
+      - ./data:/training/data
+      - ./models:/training/models
+      - ./metrics:/training/metrics
+      - ./logs/training:/training/logs
+      - ./services/training_service/config:/training/config
     depends_on:
       hist_ingestion:
         condition: service_completed_successfully

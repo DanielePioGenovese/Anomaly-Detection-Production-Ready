@@ -16,7 +16,7 @@ class TrainingConfig:
     # ============================================================================
     
     # Root directories
-    ROOT_DIR = Path("/app")  # Container root
+    ROOT_DIR = Path("/training")  # Container root
     DATA_DIR = ROOT_DIR / "data"
     MODELS_DIR = ROOT_DIR / "models"
     METRICS_DIR = ROOT_DIR / "metrics"
