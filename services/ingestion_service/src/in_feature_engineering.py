@@ -74,3 +74,23 @@ def run_streaming_preprocessing():
 
     logger.info("Streaming Preprocessing Pipeline (Scaling + OHE) started...")
     app.run(sdf)
+
+
+def load_scaler(self, filepath: Path):
+        """
+        Loads a saved scaler and the associated feature column names.
+        """
+        try:
+            filepath = Path(filepath)
+            if not filepath.exists():
+                raise FileNotFoundError(f"Scaler file not found at {filepath}")
+
+            scaler_data = joblib.load(filepath)
+            self.scaler = scaler_data['scaler']
+            self.feature_columns = scaler_data['feature_columns']
+            
+            logger.info(f"Scaler loaded from {filepath}")
+            logger.info(f"Feature columns: {self.feature_columns}")
+        except Exception as e:
+            logger.error(f"Error loading scaler: {e}")
+            raise  # re-raise original error, program stops and logs trace

@@ -82,35 +82,6 @@ class DataPreprocessor:
 
         return X
     
-    def inverse_transform(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Performs inverse transform on normalized data.
-
-        Args:
-            data: DataFrame with normalized data.
-
-        Returns:
-            DataFrame with data in the original scale.
-        """
-        if self.feature_columns is None:
-            raise ValueError("Scaler not yet fitted. Run preprocess_data with fit=True first")
-        
-        # Check that columns match
-        if list(data.columns) != self.feature_columns:
-            raise ValueError(
-                f"DataFrame columns do not match scaler columns. "
-                f"Expected: {self.feature_columns}, Received: {list(data.columns)}"
-            )
-        
-        # Inverse transform
-        X_original = self.scaler.inverse_transform(data)
-        
-        # Return as DataFrame
-        result = pd.DataFrame(X_original, columns=self.feature_columns, index=data.index)
-        logger.info("Inverse transform completed")
-        
-        return result
-
     def transform(self, data: pd.DataFrame) -> np.ndarray:
         """
         Wrapper method for compatibility with the streaming script.
@@ -137,23 +108,3 @@ class DataPreprocessor:
         except Exception as e:
             logger.error(f"Error saving scaler: {e}")
             raise
-
-
-    def load_scaler(self, filepath: Path):
-        """
-        Loads a saved scaler and the associated feature column names.
-        """
-        try:
-            filepath = Path(filepath)
-            if not filepath.exists():
-                raise FileNotFoundError(f"Scaler file not found at {filepath}")
-
-            scaler_data = joblib.load(filepath)
-            self.scaler = scaler_data['scaler']
-            self.feature_columns = scaler_data['feature_columns']
-            
-            logger.info(f"Scaler loaded from {filepath}")
-            logger.info(f"Feature columns: {self.feature_columns}")
-        except Exception as e:
-            logger.error(f"Error loading scaler: {e}")
-            raise  # re-raise original error, program stops and logs trace

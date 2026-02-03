@@ -16,7 +16,7 @@ class DataLoader:
         self.feature_columns: Optional[List[str]] = None  # Stores the columns used for fitting
         self.label_columns = ['Is_Anomaly', 'Anomaly_Type'] # label columns to exclude in preprocessing (present only in test set)
 
-    def load_data(self, filename: str = "*.csv") -> pd.DataFrame:
+    def load_data(self, filename: str = "*.parquet") -> pd.DataFrame:
         """
         Loads data from the directory
         Args:
