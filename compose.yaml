@@ -16,14 +16,14 @@ services:
       - --smp 1
       - --default-log-level=info
     ports:
-      - "18081:18081"  # Schema Registry
-      - "18082:18082"  # Pandaproxy
-      - "19092:19092"  # Kafka API (external)
-      - "19644:9644"   # Admin API
+      - "18081:18081" # Schema Registry
+      - "18082:18082" # Pandaproxy
+      - "19092:19092" # Kafka API (external)
+      - "19644:9644" # Admin API
     volumes:
       - ./redpanda_storage:/var/lib/redpanda/data
     healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      test: [ "CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1" ]
       interval: 15s
       timeout: 3s
       retries: 5
@@ -41,3 +41,89 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
+
+  # --- Apache Airflow Components ---
+
+  # 1. Database (Metadati di Airflow)
+  postgres:
+    image: postgres:13
+    container_name: airflow_postgres
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    volumes:
+      - ./airflow_db:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U airflow" ]
+      interval: 5s
+      retries: 5
+
+  # 2. Inizializzazione (Crea tabelle e utente admin)
+  airflow-init:
+    image: apache/airflow:2.10.4
+    container_name: airflow_init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        # Inizializza il DB
+        airflow db migrate &&
+        # Crea l'utente Admin
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin
+
+  # 3. Webserver (Interfaccia Grafica)
+  airflow-webserver:
+    image: apache/airflow:2.10.4
+    container_name: airflow_webserver
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False # Non vogliamo i DAG di esempio spazzatura
+    volumes:
+      - ./dags:/opt/airflow/dags # Qui metteremo i tuoi file Python
+      - ./src:/opt/airflow/src # Importante: Airflow deve vedere i tuoi script sorgente
+      - ./data:/opt/airflow/data # Importante: Airflow deve accedere ai dati per il training
+    ports:
+      - "8085:8080" # Usiamo la porta 8085 per non andare in conflitto con Redpanda Console (8080)
+    command: webserver
+
+  # 4. Scheduler (Il cervello che lancia i task)
+  airflow-scheduler:
+    image: apache/airflow:2.10.4
+    container_name: airflow_scheduler
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      # Installa le librerie necessarie al volo all'avvio del container
+      - _PIP_ADDITIONAL_REQUIREMENTS=scikit-learn pandas
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./data:/opt/airflow/data
+    command: scheduler
