@@ -4,6 +4,7 @@ from pyspark.sql import DataFrame
 from pyspark.ml import Pipeline, PipelineModel
 from pyspark.ml.feature import VectorAssembler, StandardScaler, MinMaxScaler
 from pathlib import Path
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +76,27 @@ class SparkDataPreprocessor:
         return transformed_df.drop("unscaled_features")
 
     def save_model(self, path: str):
-        """
-        Saves the Spark PipelineModel. 
-        This folder can be loaded later to transform new data identically.
-        """
+        """Saves Spark model AND parameters for Quixstreams"""
         if self.model is None:
             raise ValueError("Model has not been fitted yet.")
         
+        # Save Spark PipelineModel
         logger.info(f"Saving PipelineModel to {path}")
-        # overwrite() allows replacing existing models
         self.model.write().overwrite().save(str(path))
+        
+        # Extract scaler parameters for Quixstreams
+        scaler_model = self.model.stages[1]  # StandardScaler
+        
+        params = {
+            'feature_cols': self.feature_cols,
+            'means': scaler_model.mean.toArray().tolist(),
+            'stds': scaler_model.std.toArray().tolist(),
+            'scaler_type': self.scaler_type
+        }
+        
+        # Save as JSON
+        params_path = Path(path).parent / "scaler_params.json"
+        with open(params_path, 'w') as f:
+            json.dump(params, f, indent=2)
+        
+        logger.info(f"✅ Scaler parameters saved to {params_path}")
