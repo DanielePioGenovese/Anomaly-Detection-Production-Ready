@@ -1,102 +1,198 @@
 import logging
 from typing import List
 from pyspark.sql import DataFrame
-from pyspark.ml import Pipeline, PipelineModel
-from pyspark.ml.feature import VectorAssembler, StandardScaler, MinMaxScaler
-from pathlib import Path
-import json
+from pyspark.sql.functions import col, sqrt, abs as spark_abs, when, lit, variance, lag
+from pyspark.sql.window import Window
 
 logger = logging.getLogger(__name__)
 
 class SparkDataPreprocessor:
-    def __init__(self, label_columns: List[str], scaler_type: str = 'standard'):
+    def __init__(self, enable_expensive_features: bool = True):
         """
         Args:
-            label_columns: Columns to EXCLUDE from scaling (IDs, Timestamps, Targets)
-            scaler_type: 'standard' or 'minmax'
+            enable_expensive_features: If True, includes window-based features (slower)
         """
-        self.label_columns = label_columns
-        self.scaler_type = scaler_type
-        self.model: PipelineModel = None
-        self.feature_cols: List[str] = []
+        self.enable_expensive_features = enable_expensive_features
+        self.derived_feature_cols: List[str] = []
 
-    def fit_transform(self, df: DataFrame) -> DataFrame:
+    def _engineer_features(self, df: DataFrame) -> DataFrame:
         """
-        Identifies numeric columns, assembles them, fits the scaler, 
-        and transforms the data.
+        Create derived features based on the calculation logic.
+        Optimized version with optional expensive operations.
         """
-        logger.info("Starting PySpark preprocessing...")
-
-        # 1. Identify Numeric Columns automatically
-        # dtypes returns list of (col_name, data_type)
-        numeric_types = ['int', 'bigint', 'float', 'double']
-        all_cols = df.dtypes
+        logger.info("Engineering derived features...")
+        logger.info(f"Expensive features (windows): {'ENABLED' if self.enable_expensive_features else 'DISABLED'}")
         
-        self.feature_cols = [
-            name for name, dtype in all_cols 
-            if dtype in numeric_types and name not in self.label_columns
+        # 1. Current_Avg - average across three phases
+        df = df.withColumn(
+            "Current_Avg",
+            (col("Current_L1") + col("Current_L2") + col("Current_L3")) / 3.0
+        )
+        
+        # 2. Apparent_Power = sqrt(3) * V * I
+        df = df.withColumn(
+            "Apparent_Power",
+            sqrt(lit(3)) * col("Voltage_L_L") * col("Current_Avg")
+        )
+        
+        # 3. Active_Power = sqrt(3) * V * I * PF (assume PF=0.95 initially)
+        df = df.withColumn(
+            "Active_Power",
+            sqrt(lit(3)) * col("Voltage_L_L") * col("Current_Avg") * lit(0.95)
+        )
+        
+        # 4. Reactive_Power (simplified)
+        df = df.withColumn(
+            "Reactive_Power",
+            col("Voltage_L_L") * col("Current_Avg")
+        )
+        
+        # 5. Power_Factor = P / S
+        df = df.withColumn(
+            "Power_Factor",
+            when(col("Apparent_Power") > 0, 
+                 col("Active_Power") / col("Apparent_Power"))
+            .otherwise(lit(0.0))
+        )
+        
+        # 6. THD_Current (simplified estimation)
+        df = df.withColumn(
+            "THD_Current",
+            col("THD_Voltage") * lit(1.2)
+        )
+        
+        # 7. Current_P_to_P (Peak-to-Peak)
+        from pyspark.sql.functions import greatest, least
+        
+        df = df.withColumn(
+            "Current_P_to_P",
+            greatest(col("Current_L1"), col("Current_L2"), col("Current_L3")) -
+            least(col("Current_L1"), col("Current_L2"), col("Current_L3"))
+        )
+        
+        # 8. Max_Current_Instance
+        df = df.withColumn(
+            "Max_Current_Instance",
+            greatest(col("Current_L1"), col("Current_L2"), col("Current_L3"))
+        )
+        
+        # 9. Inrush_Peak (only during warmup)
+        df = df.withColumn(
+            "Inrush_Peak",
+            when(col("Cycle_Phase_ID") == 1, col("Max_Current_Instance"))
+            .otherwise(lit(0.0))
+        )
+        
+        # 10. Phase_Imbalance
+        df = df.withColumn(
+            "Phase_Imbalance",
+            (
+                (spark_abs(col("Current_L1") - col("Current_Avg")) +
+                 spark_abs(col("Current_L2") - col("Current_Avg")) +
+                 spark_abs(col("Current_L3") - col("Current_Avg"))) / 3.0
+            ) / when(col("Current_Avg") > 0, col("Current_Avg")).otherwise(lit(1.0)) * 100.0
+        )
+        
+        # 11. Energy_per_Cycle (simplified - assumes 1 second intervals)
+        df = df.withColumn(
+            "Energy_per_Cycle",
+            col("Active_Power") * lit(1.0)
+        )
+        
+        # Basic derived features (always included)
+        self.derived_feature_cols = [
+            "Current_Avg",
+            "Apparent_Power",
+            "Active_Power",
+            "Reactive_Power",
+            "Power_Factor",
+            "THD_Current",
+            "Current_P_to_P",
+            "Max_Current_Instance",
+            "Inrush_Peak",
+            "Phase_Imbalance",
+            "Energy_per_Cycle"
         ]
-
-        logger.info(f"Features selected for scaling: {self.feature_cols}")
-
-        if not self.feature_cols:
-            raise ValueError("No numeric columns found to scale.")
-
-        # 2. VectorAssembler: Combines all feature cols into a single 'features_vec'
-        assembler = VectorAssembler(
-            inputCols=self.feature_cols, 
-            outputCol="unscaled_features",
-            handleInvalid="skip" # or 'keep'/'error' based on needs
-        )
-
-        # 3. Define Scaler
-        if self.scaler_type != "standard":
-            raise ValueError(f"Unsupported scaler_type: {self.scaler_type}. Only 'standard' is allowed.")
-
-        # withMean=True is expensive in Spark (destroys sparsity), use with caution on massive sparse data
-        scaler = StandardScaler(
-            inputCol="unscaled_features",
-            outputCol="features",
-            withStd=True,
-            withMean=True
-        )
-
-        # 4. Build Pipeline
-        pipeline = Pipeline(stages=[assembler, scaler])
-
-        # 5. Fit the model (Compute Mean/Std)
-        logger.info("Fitting the Spark Pipeline...")
-        self.model = pipeline.fit(df)
-
-        # 6. Transform
-        logger.info("Transforming data...")
-        transformed_df = self.model.transform(df)
-
-        # Optional: Drop the intermediate 'unscaled_features' to save space
-        return transformed_df.drop("unscaled_features")
-
-    def save_model(self, path: str):
-        """Saves Spark model AND parameters for Quixstreams"""
-        if self.model is None:
-            raise ValueError("Model has not been fitted yet.")
         
-        # Save Spark PipelineModel
-        logger.info(f"Saving PipelineModel to {path}")
-        self.model.write().overwrite().save(str(path))
+        # EXPENSIVE OPERATIONS (window-based) - only if enabled
+        if self.enable_expensive_features:
+            logger.info("Computing expensive window-based features...")
+            
+            # Reduce shuffle partitions for better performance
+            spark_session = df.sparkSession
+            original_partitions = spark_session.conf.get("spark.sql.shuffle.partitions")
+            spark_session.conf.set("spark.sql.shuffle.partitions", "10")
+            
+            try:
+                # Data frequency: 30 seconds per reading
+                # 10 minutes batch = 20 readings (600 seconds / 30 seconds)
+                
+                # 12. Power_Var_10min - variance over last 10 minutes (20 rows at 30-sec intervals)
+                # Using row-based window: -19 to 0 = last 20 readings (current + 19 previous)
+                window_10min = Window.partitionBy("Machine_ID").orderBy("timestamp").rowsBetween(-19, 0)
+                
+                df = df.withColumn(
+                    "Power_Var_10min",
+                    variance(col("Active_Power")).over(window_10min)
+                )
+                
+                # 13. Current_Trend_5min - change in current over 5 minutes
+                df = df.withColumn(
+                    "Current_5min_Ago",
+                    lag(col("Current_Avg"), 10).over(window_5min)
+                )
+                
+                df = df.withColumn(
+                    "Current_Trend_5min",
+                    when(col("Current_5min_Ago").isNotNull(),
+                         col("Current_Avg") - col("Current_5min_Ago"))
+                    .otherwise(lit(0.0))
+                ).drop("Current_5min_Ago")
+                
+                # Fill nulls with 0 for first rows
+                df = df.fillna(0.0, subset=["Power_Var_10min", "Power_Avg_5min", "Current_Trend_5min"])
+                
+                # 14. Inrush_Duration (simplified - time in warmup phase)
+                df = df.withColumn(
+                    "Inrush_Duration",
+                    when(col("Cycle_Phase_ID") == 1, lit(100.0))
+                    .otherwise(lit(0.0))
+                )
+                
+                self.derived_feature_cols.extend([
+                    "Power_Var_10min", 
+                    "Power_Avg_5min", 
+                    "Current_Trend_5min",
+                    "Inrush_Duration"
+                ])
+                
+            finally:
+                # Restore original partition setting
+                spark_session.conf.set("spark.sql.shuffle.partitions", original_partitions)
         
-        # Extract scaler parameters for Quixstreams
-        scaler_model = self.model.stages[1]  # StandardScaler
+        logger.info(f"Created {len(self.derived_feature_cols)} derived features")
+        return df
+
+    def transform(self, df: DataFrame) -> DataFrame:
+        """
+        Engineers features and returns the DataFrame with all original columns + calculated features.
+        NO SCALING OR ENCODING - just raw calculated values.
+        """
+        logger.info("Starting feature engineering (no scaling)...")
         
-        params = {
-            'feature_cols': self.feature_cols,
-            'means': scaler_model.mean.toArray().tolist(),
-            'stds': scaler_model.std.toArray().tolist(),
-            'scaler_type': self.scaler_type
-        }
+        # Cache input if it's large to avoid recomputation
+        row_count = df.count()
+        logger.info(f"Input data: {row_count} rows")
         
-        # Save as JSON
-        params_path = Path(path).parent / "scaler_params.json"
-        with open(params_path, 'w') as f:
-            json.dump(params, f, indent=2)
-        
-        logger.info(f"✅ Scaler parameters saved to {params_path}")
+        if row_count > 1000:
+            logger.info("Caching input DataFrame for better performance...")
+            df.cache()
+
+        # Engineer derived features
+        df_transformed = self._engineer_features(df)
+
+        # Unpersist if we cached
+        if row_count > 1000:
+            df.unpersist()
+
+        return df_transformed

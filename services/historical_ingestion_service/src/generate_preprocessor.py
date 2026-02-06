@@ -3,11 +3,9 @@ import logging
 import sys
 from pathlib import Path
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col  
-from pyspark.ml.functions import vector_to_array  
 import os
 
-from config import RAW_DATA_PATH, MODEL_REGISTRY_PATH, PROCESSED_DATA_PATH
+from config import RAW_DATA_PATH, PROCESSED_DATA_PATH
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -15,7 +13,7 @@ from dataloader import DataLoader
 from hist_feature_engineering import SparkDataPreprocessor
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ArtifactGenerator")
+logger = logging.getLogger("FeatureEngineering")
 
 def generate():
     # 1. Initialize Spark Session with timestamp handling configs
@@ -45,53 +43,55 @@ def generate():
                 logger.error(f"CSV load also failed: {csv_error}")
                 raise RuntimeError("Could not load data from either Parquet or CSV") from csv_error
 
-        cols_to_exclude = ['timestamp', 'Machine_ID', 'Is_Anomaly', 'Anomaly_Type']
-        
-        # 3. Preprocess (Scaling)
-        preprocessor = SparkDataPreprocessor(
-            label_columns=cols_to_exclude,
-            scaler_type='standard'
-        )
+        # Display initial data info
+        logger.info(f"Loaded {df.count()} rows")
+        logger.info("Input schema:")
+        df.printSchema()
 
-        # This returns the DF with a new column "features" (Vector)
-        df_transformed = preprocessor.fit_transform(df)
-        
-        # 4. Convert Vector to individual columns for Feast compatibility
-        df_with_array = df_transformed.withColumn(
-            "features_array", 
-            vector_to_array(col("features"))
-        )
-        
-        # Explode array into individual feature columns
-        feature_cols = preprocessor.feature_cols
-        for idx, col_name in enumerate(feature_cols):
-            df_with_array = df_with_array.withColumn(
-                f"scaled_{col_name}",
-                col("features_array")[idx]
-            )
-        
-        # Keep only what Feast needs
-        columns_to_keep = (
-            ['timestamp', 'Machine_ID', 'Is_Anomaly', 'Anomaly_Type'] +
-            [f"scaled_{col_name}" for col_name in feature_cols]
-        )
-        df_final = df_with_array.select(columns_to_keep)
+        # 3. Add calculated features (NO SCALING)
+        logger.info("Starting feature engineering...")
+        preprocessor = SparkDataPreprocessor(enable_expensive_features=True)
 
-        # 5. Save the Model (The Scaler/Pipeline)
-        model_output_path = MODEL_REGISTRY_PATH / "spark_preprocessor"
-        os.makedirs(str(MODEL_REGISTRY_PATH), exist_ok=True)
+        # This returns the DF with all original columns + new calculated columns
+        df_with_features = preprocessor.transform(df)
         
-        preprocessor.save_model(model_output_path)
-        logger.info(f"✅ Pipeline Model saved to {model_output_path}")
+        logger.info(f"Feature engineering completed.")
+        logger.info(f"Added {len(preprocessor.derived_feature_cols)} calculated features")
+        logger.info(f"Calculated features: {preprocessor.derived_feature_cols}")
 
-        # 6. Save the Processed Data for Feast
+        # 4. Save feature metadata for reference
+        feature_metadata = {
+            'calculated_features': preprocessor.derived_feature_cols,
+            'total_calculated_features': len(preprocessor.derived_feature_cols)
+        }
+        
+        metadata_path = PROCESSED_DATA_PATH.parent / "feature_metadata.json"
         os.makedirs(str(PROCESSED_DATA_PATH.parent), exist_ok=True)
         
-        df_final.write \
+        with open(str(metadata_path), 'w') as f:
+            import json
+            json.dump(feature_metadata, f, indent=2)
+        logger.info(f"Feature metadata saved to {metadata_path}")
+
+        # 5. Save the Processed Data for Feast
+        logger.info(f"Writing processed data to {PROCESSED_DATA_PATH}...")
+        df_with_features.write \
             .mode("overwrite") \
             .parquet(str(PROCESSED_DATA_PATH))
             
         logger.info(f"✅ Processed data saved to {PROCESSED_DATA_PATH}")
+        
+        # 6. Verification
+        logger.info("\n--- VERIFICATION ---")
+        logger.info(f"Output row count: {df_with_features.count()}")
+        logger.info("\nFinal schema:")
+        df_with_features.printSchema()
+        logger.info("\nSample of output (showing all columns, first 3 rows):")
+        df_with_features.show(3, truncate=True)
+        
+        logger.info("\n✅ PIPELINE COMPLETED SUCCESSFULLY!")
+        logger.info(f"Output contains all original columns + {len(preprocessor.derived_feature_cols)} calculated features")
+        logger.info("Data is ready for Feast ingestion")
 
     except Exception as e:
         logger.error(f"Job failed: {e}", exc_info=True)
