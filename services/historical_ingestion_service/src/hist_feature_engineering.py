@@ -1,105 +1,118 @@
 import logging
-from typing import List
+from typing import List, Optional
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, sqrt, abs as spark_abs, when, lit, variance, lag
+from pyspark.sql.functions import (
+    col, sqrt, abs as spark_abs, when, lit, variance, greatest, least, coalesce
+)
 from pyspark.sql.window import Window
 
 logger = logging.getLogger(__name__)
 
 class SparkDataPreprocessor:
-    def __init__(self, enable_expensive_features: bool = True):
+    def __init__(
+        self,
+        enable_expensive_features: bool = True,
+        pf_default: float = 0.95,
+        sample_interval_seconds: float = 30.0,
+        cache_threshold_rows: int = 1000,
+        target_shuffle_partitions: str = "10",
+    ):
         """
         Args:
             enable_expensive_features: If True, includes window-based features (slower)
+            pf_default: default power factor to use if PF isn't measured
+            sample_interval_seconds: reading interval (seconds), used for energy calculation
+            cache_threshold_rows: threshold to trigger caching
+            target_shuffle_partitions: temporary value for spark.sql.shuffle.partitions during window ops
         """
         self.enable_expensive_features = enable_expensive_features
+        self.pf_default = float(pf_default)
+        self.sample_interval_seconds = float(sample_interval_seconds)
+        self.cache_threshold_rows = int(cache_threshold_rows)
+        self.target_shuffle_partitions = str(target_shuffle_partitions)
         self.derived_feature_cols: List[str] = []
 
     def _engineer_features(self, df: DataFrame) -> DataFrame:
-        """
-        Create derived features based on the calculation logic.
-        Optimized version with optional expensive operations.
-        """
         logger.info("Engineering derived features...")
         logger.info(f"Expensive features (windows): {'ENABLED' if self.enable_expensive_features else 'DISABLED'}")
-        
+
+        if 'timestamp' in df.columns:
+            df = df.withColumn('timestamp', (col('timestamp') / 1000).cast('timestamp'))
+
         # 1. Current_Avg - average across three phases
         df = df.withColumn(
             "Current_Avg",
-            (col("Current_L1") + col("Current_L2") + col("Current_L3")) / 3.0
+            (col("Current_L1") + col("Current_L2") + col("Current_L3")) / lit(3.0)
         )
-        
-        # 2. Apparent_Power = sqrt(3) * V * I
+
+        # 2. Apparent_Power = sqrt(3) * V_ll * I_avg
         df = df.withColumn(
             "Apparent_Power",
-            sqrt(lit(3)) * col("Voltage_L_L") * col("Current_Avg")
+            sqrt(lit(3.0)) * col("Voltage_L_L") * col("Current_Avg")
         )
-        
-        # 3. Active_Power = sqrt(3) * V * I * PF (assume PF=0.95 initially)
+
+        # 3. Active_Power = sqrt(3) * V_ll * I_avg * PF
         df = df.withColumn(
             "Active_Power",
-            sqrt(lit(3)) * col("Voltage_L_L") * col("Current_Avg") * lit(0.95)
+            sqrt(lit(3.0)) * col("Voltage_L_L") * col("Current_Avg") * lit(self.pf_default)
         )
-        
-        # 4. Reactive_Power (simplified)
+
+        # 4. Reactive_Power computed from S and P: Q = sqrt(max(S^2 - P^2, 0))
+        s_sq_minus_p_sq = (col("Apparent_Power") * col("Apparent_Power")) - (col("Active_Power") * col("Active_Power"))
         df = df.withColumn(
             "Reactive_Power",
-            col("Voltage_L_L") * col("Current_Avg")
+            sqrt(when(s_sq_minus_p_sq >= 0.0, s_sq_minus_p_sq).otherwise(lit(0.0)))
         )
-        
-        # 5. Power_Factor = P / S
+
+        # 5. Power_Factor = P / S (guarded)
         df = df.withColumn(
             "Power_Factor",
-            when(col("Apparent_Power") > 0, 
-                 col("Active_Power") / col("Apparent_Power"))
-            .otherwise(lit(0.0))
+            when(col("Apparent_Power") > 0.0, col("Active_Power") / col("Apparent_Power")).otherwise(lit(0.0))
         )
-        
-        # 6. THD_Current (simplified estimation)
+
+        # 6. THD_Current (heuristic) -- keep coefficient as parameter if needed.
         df = df.withColumn(
             "THD_Current",
             col("THD_Voltage") * lit(1.2)
         )
-        
+
         # 7. Current_P_to_P (Peak-to-Peak)
-        from pyspark.sql.functions import greatest, least
-        
         df = df.withColumn(
             "Current_P_to_P",
             greatest(col("Current_L1"), col("Current_L2"), col("Current_L3")) -
             least(col("Current_L1"), col("Current_L2"), col("Current_L3"))
         )
-        
+
         # 8. Max_Current_Instance
         df = df.withColumn(
             "Max_Current_Instance",
             greatest(col("Current_L1"), col("Current_L2"), col("Current_L3"))
         )
-        
+
         # 9. Inrush_Peak (only during warmup)
         df = df.withColumn(
             "Inrush_Peak",
-            when(col("Cycle_Phase_ID") == 1, col("Max_Current_Instance"))
-            .otherwise(lit(0.0))
+            when(col("Cycle_Phase_ID") == 1, col("Max_Current_Instance")).otherwise(lit(0.0))
         )
-        
-        # 10. Phase_Imbalance
+
+        # 10. Phase_Imbalance: mean absolute deviation relative to Current_Avg (in percent)
+        mad = (
+            (spark_abs(col("Current_L1") - col("Current_Avg")) +
+             spark_abs(col("Current_L2") - col("Current_Avg")) +
+             spark_abs(col("Current_L3") - col("Current_Avg"))) / lit(3.0)
+        )
+        # prevent division by zero using coalesce -> default denom = 1.0
+        denom = coalesce(when(col("Current_Avg") > 0.0, col("Current_Avg")), lit(1.0))
+        df = df.withColumn("Phase_Imbalance", (mad / denom) * lit(100.0))
+
+        # 11. Energy per cycle [Wh] given sample interval
+        seconds = lit(self.sample_interval_seconds)
         df = df.withColumn(
-            "Phase_Imbalance",
-            (
-                (spark_abs(col("Current_L1") - col("Current_Avg")) +
-                 spark_abs(col("Current_L2") - col("Current_Avg")) +
-                 spark_abs(col("Current_L3") - col("Current_Avg"))) / 3.0
-            ) / when(col("Current_Avg") > 0, col("Current_Avg")).otherwise(lit(1.0)) * 100.0
+            "Energy_per_Cycle_Wh",
+            col("Active_Power") * (seconds / lit(3600.0))
         )
-        
-        # 11. Energy_per_Cycle (simplified - assumes 1 second intervals)
-        df = df.withColumn(
-            "Energy_per_Cycle",
-            col("Active_Power") * lit(1.0)
-        )
-        
-        # Basic derived features (always included)
+
+        # Basic derived features (always included) — NOTE: matches actual column names
         self.derived_feature_cols = [
             "Current_Avg",
             "Apparent_Power",
@@ -111,65 +124,35 @@ class SparkDataPreprocessor:
             "Max_Current_Instance",
             "Inrush_Peak",
             "Phase_Imbalance",
-            "Energy_per_Cycle"
+            "Energy_per_Cycle_Wh",
         ]
-        
-        # EXPENSIVE OPERATIONS (window-based) - only if enabled
+
+        # EXPENSIVE OPERATIONS (window-based)
         if self.enable_expensive_features:
             logger.info("Computing expensive window-based features...")
-            
-            # Reduce shuffle partitions for better performance
+
             spark_session = df.sparkSession
             original_partitions = spark_session.conf.get("spark.sql.shuffle.partitions")
-            spark_session.conf.set("spark.sql.shuffle.partitions", "10")
-            
+            spark_session.conf.set("spark.sql.shuffle.partitions", self.target_shuffle_partitions)
+
             try:
-                # Data frequency: 30 seconds per reading
-                # 10 minutes batch = 20 readings (600 seconds / 30 seconds)
-                
-                # 12. Power_Var_10min - variance over last 10 minutes (20 rows at 30-sec intervals)
-                # Using row-based window: -19 to 0 = last 20 readings (current + 19 previous)
-                window_10min = Window.partitionBy("Machine_ID").orderBy("timestamp").rowsBetween(-19, 0)
-                
+                # Define window: last N readings. Example: 10 minutes with sample_interval_seconds
+                readings_in_10min = int(round(600.0 / self.sample_interval_seconds))
+                window_10min = Window.partitionBy("Machine_ID").orderBy(col("timestamp")).rowsBetween(-(readings_in_10min - 1), 0)
+
                 df = df.withColumn(
                     "Power_Var_10min",
                     variance(col("Active_Power")).over(window_10min)
                 )
-                
-                # 13. Current_Trend_5min - change in current over 5 minutes
-                df = df.withColumn(
-                    "Current_5min_Ago",
-                    lag(col("Current_Avg"), 10).over(window_5min)
-                )
-                
-                df = df.withColumn(
-                    "Current_Trend_5min",
-                    when(col("Current_5min_Ago").isNotNull(),
-                         col("Current_Avg") - col("Current_5min_Ago"))
-                    .otherwise(lit(0.0))
-                ).drop("Current_5min_Ago")
-                
-                # Fill nulls with 0 for first rows
-                df = df.fillna(0.0, subset=["Power_Var_10min", "Power_Avg_5min", "Current_Trend_5min"])
-                
-                # 14. Inrush_Duration (simplified - time in warmup phase)
-                df = df.withColumn(
-                    "Inrush_Duration",
-                    when(col("Cycle_Phase_ID") == 1, lit(100.0))
-                    .otherwise(lit(0.0))
-                )
-                
-                self.derived_feature_cols.extend([
-                    "Power_Var_10min", 
-                    "Power_Avg_5min", 
-                    "Current_Trend_5min",
-                    "Inrush_Duration"
-                ])
-                
+
+                # replace nulls for the first few rows
+                df = df.fillna(0.0, subset=["Power_Var_10min"])
+
+                self.derived_feature_cols.extend(["Power_Var_10min"])
+
             finally:
-                # Restore original partition setting
                 spark_session.conf.set("spark.sql.shuffle.partitions", original_partitions)
-        
+
         logger.info(f"Created {len(self.derived_feature_cols)} derived features")
         return df
 
@@ -179,20 +162,31 @@ class SparkDataPreprocessor:
         NO SCALING OR ENCODING - just raw calculated values.
         """
         logger.info("Starting feature engineering (no scaling)...")
-        
-        # Cache input if it's large to avoid recomputation
-        row_count = df.count()
-        logger.info(f"Input data: {row_count} rows")
-        
-        if row_count > 1000:
-            logger.info("Caching input DataFrame for better performance...")
-            df.cache()
 
-        # Engineer derived features
+        # Decide about caching: if large, cache before heavy ops and materialize once.
+        row_count = None
+        try:
+            row_count = df.count()
+        except Exception as e:
+            logger.warning(f"Could not count input DataFrame cheaply: {e}")
+
+        if row_count is not None and row_count > self.cache_threshold_rows:
+            logger.info(f"Input data: {row_count} rows -> caching for performance.")
+            df = df.cache()
+            # materialize cache once
+            df.count()
+
         df_transformed = self._engineer_features(df)
 
         # Unpersist if we cached
-        if row_count > 1000:
-            df.unpersist()
+        if row_count is not None and row_count > self.cache_threshold_rows:
+            try:
+                df.unpersist()
+            except Exception:
+                # fallback: call unpersist on transformed DF if needed
+                try:
+                    df_transformed.unpersist()
+                except Exception:
+                    pass
 
         return df_transformed

@@ -22,7 +22,7 @@ class DataLoader:
         Internal debug method to list files in the target directory 
         using standard Python I/O before Spark touches it.
         """
-        # Extract the directory part from the wildcard path (e.g. /data/*.csv -> /data)
+        # Extract the directory part from the wildcard path (e.g. /data/*.parquet -> /data)
         directory = os.path.dirname(full_path)
         pattern = os.path.basename(full_path)
         
@@ -50,7 +50,7 @@ class DataLoader:
         
         logger.info("--- DEBUG END ---")
 
-    def load_data(self, file_pattern: str = "*.parquet", file_format: str = "parquet") -> DataFrame:
+    def load_data(self, file_pattern: str = "train_set.parquet", file_format: str = "parquet") -> DataFrame:
         """
         Loads data from the directory using Spark's distributed reader.
         

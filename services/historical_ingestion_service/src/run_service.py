@@ -22,6 +22,7 @@ def generate():
         .config("spark.driver.memory", "4g") \
         .config("spark.sql.parquet.int96RebaseModeInRead", "CORRECTED") \
         .config("spark.sql.parquet.datetimeRebaseModeInRead", "CORRECTED") \
+        .config("spark.sql.parquet.nanosecondsAsLong", "true") \
         .getOrCreate()
     
     logger.info("Spark Session initialized.")
@@ -33,15 +34,10 @@ def generate():
         # Try Parquet, fall back to CSV if needed
         try:
             logger.info("Attempting to load Parquet files...")
-            df = loader.load_data(file_pattern="*.parquet", file_format="parquet")
+            df = loader.load_data(file_pattern="train_set.parquet", file_format="parquet")
         except Exception as parquet_error:
             logger.warning(f"Parquet load failed: {parquet_error}")
-            logger.info("Falling back to CSV...")
-            try:
-                df = loader.load_data(file_pattern="*.csv", file_format="csv")
-            except Exception as csv_error:
-                logger.error(f"CSV load also failed: {csv_error}")
-                raise RuntimeError("Could not load data from either Parquet or CSV") from csv_error
+            raise RuntimeError("Could not load data from Parquet")
 
         # Display initial data info
         logger.info(f"Loaded {df.count()} rows")

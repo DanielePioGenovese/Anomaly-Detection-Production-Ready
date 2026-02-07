@@ -29,4 +29,4 @@ RUN mkdir -p /app/data/registry /app/data/offline
 # Feast commands must be run from here to correctly identify the repository configuration.
 WORKDIR /app/src/app/feature_repo
 
-CMD ["uv", "run", "feast", "apply"]
+CMD ["uv", "run", "feast", "apply"]`
