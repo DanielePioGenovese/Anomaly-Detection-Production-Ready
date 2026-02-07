@@ -78,52 +78,104 @@ services:
     # Job should run once and exit
     restart: "no"
 
-  training:
-    build:
-      context: .
-      dockerfile: services/training_service/Dockerfile
-    container_name: training_service
-    environment:
-      - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=INFO
-      - DATA_DIR=/training/data
-      - MODELS_DIR=/training/models
-      - METRICS_DIR=/training/metrics
-    volumes:
-      - ./data:/training/data
-      - ./models:/training/models
-      - ./metrics:/training/metrics
-      - ./logs/training:/training/logs
-      - ./services/training_service/config:/training/config
-    depends_on:
-      hist_ingestion:
-        condition: service_completed_successfully
-    networks:
-      - anomaly-detection-network
-    restart: "no"
+#   training:
+#     build:
+#       context: .
+#       dockerfile: services/training_service/Dockerfile
+#     container_name: training_service
+#     environment:
+#       - PYTHONUNBUFFERED=1
+#       - LOG_LEVEL=INFO
+#       - DATA_DIR=/training/data
+#       - MODELS_DIR=/training/models
+#       - METRICS_DIR=/training/metrics
+#     volumes:
+#       - ./data:/training/data
+#       - ./models:/training/models
+#       - ./metrics:/training/metrics
+#       - ./logs/training:/training/logs
+#       - ./services/training_service/config:/training/config
+#     depends_on:
+#       hist_ingestion:
+#         condition: service_completed_successfully
+#     networks:
+#       - anomaly-detection-network
+#     restart: "no"
 
-  # ingestion:
-  #   build:
-  #     context: .
-  #     dockerfile: services/ingestion_service/Dockerfile
-  #   container_name: ingestion_service
-  #   ports:
-  #     - '9090:9090'
-  #   environment:
-  #     - PYTHONUNBUFFERED=1
-  #     - KAFKA_BROKER=redpanda:9092
-  #   volumes:
-  #     - ./models:/ingestion/models
-  #     - ./config:/ingestion/config
-  #     - ./logs/ingestion:/ingestion/logs
-  #   depends_on:
-  #     redpanda:
-  #       condition: service_healthy
-  #     training:
-  #       condition: service_completed_successfully
-  #   networks:
-  #     - anomaly-detection-network
+#   # ingestion:
+#   #   build:
+#   #     context: .
+#   #     dockerfile: services/ingestion_service/Dockerfile
+#   #   container_name: ingestion_service
+#   #   ports:
+#   #     - '9090:9090'
+#   #   environment:
+#   #     - PYTHONUNBUFFERED=1
+#   #     - KAFKA_BROKER=redpanda:9092
+#   #   volumes:
+#   #     - ./models:/ingestion/models
+#   #     - ./config:/ingestion/config
+#   #     - ./logs/ingestion:/ingestion/logs
+#   #   depends_on:
+#   #     redpanda:
+#   #       condition: service_healthy
+#   #     training:
+#   #       condition: service_completed_successfully
+#   #   networks:
+#   #     - anomaly-detection-network
 
+  
+# # Build Redis
+#   redis:
+#     image: redis:7-alpine
+#     container_name: redis
+#     command: ['redis-server','--appendonly','yes']
+#     ports: '6379:6379'
+#     volumes:
+#       - redis_data:/data
+#     restart: unless-stopped
+#     healthcheck:
+#     test: ["CMD", "redis-cli", "ping"]
+#     interval: 5s
+#     timeout: 3s
+#     retries: 20
+
+    
+# # Feast configuration to use Redis
+#   feature_store_apply:
+#     build:
+#       context: .
+#       dockerfile: services/feature_store_service/feature_store/Dockerfile
+#     container_name: feature_store_apply
+#     depends_on:
+#       redis:
+#         condition: service_healthy
+#     volumes:
+#       - ./data/registry:/app/data/registry
+#       - ./data/historical_processed:/app/data/historical_processed
+#       - ./services/feature_store_src/feature_store/src:/app/feature_store_src/feature_store/src:ro
+#     restart: 'no'
+  
+#   feature_store_service:
+#     build: 
+#       context: .
+#       dockerfile: services/feature_store_src/feature_store_service/Dockerfile
+#     container_name: feature_store_service
+#     depends_on:
+#       redis:
+#         condition: service_healthy
+#       feature_store_apply:
+#         condition: service_completed_successfully
+#       environment:
+#         FEAST_REPO_PATH: /app/feature_store_src/feature_store/src 
+#         FEAST_FEATURE_SERVICE: anoamly_detection_v1
+#       volumes:
+#         - ./data/registry:/app/data/registry
+#         - ./data/historical_processed:/app/data/historical_processed
+#         - ./services/feature_store_src/feature_store/src:/app/feature_store_src/feature_store/src:ro
+#       ports:
+#         - '8080:8080'
+#       restart: unless-stopped
 
 networks:
   anomaly-detection-network:
