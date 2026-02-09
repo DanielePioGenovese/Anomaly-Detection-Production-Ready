@@ -53,3 +53,4 @@ data/historical_processed
 # Metadata PySpark
 data/feature_metadata.json
 data/pyspark_metadata
+.vscode/settings.json

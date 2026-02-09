@@ -1,11 +1,7 @@
 from feast import Entity, FeatureView, Field, FileSource
 from feast.types import Int64, Float32
 
-# Define the entity (unique identifier for each machine)
-machine = Entity(
-    name="machine_id",
-    join_keys=["machine_id"]
-)
+
 
 # Define the data source (where Feast reads the historical features from)
 #    This can be a Parquet or CSV file
