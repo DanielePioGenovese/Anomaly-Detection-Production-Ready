@@ -56,3 +56,4 @@ data/pyspark_metadata
 
 # .vscode/
 .vscode/
+.vscode/settings.json
