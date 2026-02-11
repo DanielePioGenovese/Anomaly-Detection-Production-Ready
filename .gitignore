@@ -21,6 +21,8 @@ ImportantThings.txt
 # Folders
 historical_data/
 streaming_data/
+processed_datasets/
+synthetic_datasets/
 
 # Kafka
 kafka_storage/

@@ -39,6 +39,9 @@ dataset-creation = [
     "scikit-learn>=1.8.0",
     "sdv>=1.33.0",
 ]
+dataset-creation-2 = [
+    "pyspark>=4.1.1",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu126"

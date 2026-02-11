@@ -191,6 +191,25 @@ services:
       timeout: 3s
       retries: 3
 
+  create_datasets:
+    build:
+      context: .
+      dockerfile: services/create_datasets_service/Dockerfile
+    container_name: create_datasets_v2
+    environment:
+      - APP_HOME=/create_datasets
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      # Spark Driver memory - adjust based on your host RAM
+      - SPARK_DRIVER_MEMORY=4g
+    volumes:
+      - ./data:/create_datasets/data
+    ports:
+      # Spark UI: Access at http://localhost:4040 while the job is running
+      - "4040:4040"
+    shm_size: '2gb'
+    restart: "no"
+
 networks:
   anomaly-detection-network:
     driver: bridge
@@ -200,3 +219,4 @@ networks:
 volumes:
   redis_data:
     driver: local
+
