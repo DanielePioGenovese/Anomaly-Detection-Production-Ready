@@ -21,6 +21,8 @@ ImportantThings.txt
 # Folders
 historical_data/
 streaming_data/
+processed_datasets/
+synthetic_datasets/
 
 # Kafka
 kafka_storage/
@@ -56,4 +58,4 @@ data/pyspark_metadata
 
 # .vscode/
 .vscode/
-MLOPS_FLOW_EXPLAINED.md
+.vscode/settings.json
