@@ -29,6 +29,13 @@ normal_df, anomaly_df = generate_industrial_washer_datasets(
     anomaly_rate=0.02
 )
 
+normal_streaming_df, anomaly_streaming_df = generate_industrial_washer_datasets(
+    spark=spark,
+    num_rows=100_000,
+    anomaly_rate=0.02,
+    streaming=True
+)
+
 # ============================================================================
 # 3. Basic Data Exploration
 # ============================================================================
@@ -42,6 +49,12 @@ normal_df.printSchema()
 
 print("\nAnomaly Dataset Schema:")
 anomaly_df.printSchema()
+
+print("\nNormal Dataset Streaming Schema:")
+normal_streaming_df.printSchema()
+
+print("\nAnomaly Dataset Streaming Schema:")
+anomaly_streaming_df.printSchema()
 
 # ============================================================================
 # 4. Statistical Analysis
@@ -116,6 +129,14 @@ print("\nAnomaly Dataset - Phase Distribution with Anomalies:")
 anomaly_df.groupBy("Cycle_Phase_ID", "is_anomaly").count() \
     .orderBy("Cycle_Phase_ID", "is_anomaly").show()
 
+print("\nNormal Dataset - Phase Distribution:")
+normal_streaming_df.groupBy("Cycle_Phase_ID").count() \
+    .orderBy("Cycle_Phase_ID").show()
+
+print("\nAnomaly Dataset - Phase Distribution with Anomalies:")
+anomaly_streaming_df.groupBy("Cycle_Phase_ID", "is_anomaly").count() \
+    .orderBy("Cycle_Phase_ID", "is_anomaly").show()
+
 # ============================================================================
 # 6. Machine-Level Analysis
 # ============================================================================
@@ -169,50 +190,6 @@ print("\n" + "="*80)
 print("SAVING DATASETS")
 print("="*80)
 
-
 save_datasets(normal_df, anomaly_df)
+save_datasets(normal_streaming_df, anomaly_streaming_df, streaming=True)
 
-
-# ============================================================================
-# 9. Create Views for SQL Queries (Optional)
-# ============================================================================
-
-print("\n" + "="*80)
-print("CREATING TEMPORARY SQL VIEWS")
-print("="*80)
-
-normal_df.createOrReplaceTempView("normal_data")
-anomaly_df.createOrReplaceTempView("anomaly_data")
-
-print("✓ Views created: 'normal_data' and 'anomaly_data'")
-print("\nYou can now run SQL queries like:")
-print("  spark.sql('SELECT * FROM anomaly_data WHERE is_anomaly = 1').show()")
-
-# ============================================================================
-# 10. Example: Train/Test Split for ML
-# ============================================================================
-
-print("\n" + "="*80)
-print("EXAMPLE: TRAIN/TEST SPLIT FOR MACHINE LEARNING")
-print("="*80)
-
-# Split anomaly dataset into train (80%) and test (20%)
-train_df, test_df = anomaly_df.randomSplit([0.8, 0.2], seed=42)
-
-print(f"\nTotal records: {anomaly_df.count():,}")
-print(f"Training set: {train_df.count():,} ({train_df.count()/anomaly_df.count()*100:.1f}%)")
-print(f"Test set: {test_df.count():,} ({test_df.count()/anomaly_df.count()*100:.1f}%)")
-
-# Check anomaly distribution in splits
-print("\nAnomaly distribution in Training set:")
-train_df.groupBy("is_anomaly").count().show()
-
-print("\nAnomaly distribution in Test set:")
-test_df.groupBy("is_anomaly").count().show()
-
-print("\n" + "="*80)
-print("EXAMPLE COMPLETE!")
-print("="*80)
-
-# Don't stop Spark - keep it alive for interactive use
-# spark.stop()

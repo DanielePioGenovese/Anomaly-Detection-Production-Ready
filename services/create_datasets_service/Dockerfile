@@ -19,7 +19,7 @@ WORKDIR /create_datasets
 COPY pyproject.toml uv.lock ./
 
 # 3. Install dependencies (Make sure 'pyspark' is in your pyproject.toml)
-RUN uv sync --frozen --no-dev --group dataset-creation-2 
+RUN uv sync --frozen --no-dev --group dataset-creation  
 
 # 4. Copy source code
 COPY services/create_datasets_service/src ./src/
