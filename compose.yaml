@@ -49,29 +49,6 @@ services:
     networks:
       - anomaly-detection-network
 
-  # Historical Data Ingestion & Feature Engineering Service
-  hist_ingestion:
-    build: 
-      context: .
-      dockerfile: services/historical_ingestion_service/Dockerfile
-    container_name: historical_ingestion_service
-    depends_on:
-      create_datasets:
-        condition: service_completed_successfully
-    environment:
-      - APP_HOME=/hist_ingestion
-      - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=INFO
-      - SPARK_DRIVER_MEMORY=4g
-    volumes:
-      - ./data:/hist_ingestion/data
-    ports:
-      - "4041:4040"
-    networks:
-      - anomaly-detection-network
-    shm_size: '2gb' 
-    restart: "no"
-
  
   redis:
     image: redis:7-alpine
@@ -158,6 +135,28 @@ services:
     shm_size: '2gb'
     networks:
       - anomaly-detection-network
+    restart: "no"
+
+  hist_ingestion:
+    build: 
+      context: .
+      dockerfile: services/historical_ingestion_service/Dockerfile
+    container_name: historical_ingestion_service
+    depends_on:
+      create_datasets:
+        condition: service_completed_successfully
+    environment:
+      - APP_HOME=/hist_ingestion
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - SPARK_DRIVER_MEMORY=4g
+    volumes:
+      - ./data:/hist_ingestion/data
+    ports:
+      - "4041:4040"
+    networks:
+      - anomaly-detection-network
+    shm_size: '2gb' 
     restart: "no"
 
   feature_loader:
