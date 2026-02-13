@@ -11,99 +11,47 @@ Feature views specify:
 
 from datetime import timedelta
 from feast import FeatureView, Field
-from feast.types import Float32, Int64, String
+from feast.types import Float32, String, Int64
 from entity import machine
-from data_sources import stream_source
+from src.data_sources import machines_batch, stream_source
 
 
-# ============================================================================
-# MACHINE FEATURES VIEW
-# ============================================================================
-# Groups all sensor readings and engineered features for washing machines
-machine_view = FeatureView(
-    name="machine_stream_features_v1",
-    version=1, # to Remove
+machine_stream_features = FeatureView(
+    name="machine_stream_features",
     entities=[machine],
-    ttl=timedelta(days=7),  # Features expire after 7 days in online store (Redis)
-    
+    ttl=timedelta(hours=24),
     schema=[
-        # ====================================================================
-        # RAW SENSOR READINGS - Electrical Measurements
-        # ====================================================================
-        Field(
-            name="Current_L1", 
-            dtype=Float32,
-            description="Current on Phase L1 in Amperes"
-        ),
-        Field(
-            name="Current_L2", 
-            dtype=Float32,
-            description="Current on Phase L2 in Amperes"
-        ),
-        Field(
-            name="Current_L3", 
-            dtype=Float32,
-            description="Current on Phase L3 in Amperes"
-        ),
-        Field(
-            name="Voltage_L_L", 
-            dtype=Float32,
-            description="Line-to-Line Voltage in Volts"
-        ),
-        
-        # ====================================================================
-        # RAW SENSOR READINGS - Operational Parameters
-        # ====================================================================
-        Field(
-            name="Water_Temp_C", 
-            dtype=Float32,
-            description="Water temperature in Celsius"
-        ),
-        Field(
-            name="Motor_RPM", 
-            dtype=Float32,
-            description="Motor rotation speed in RPM"
-        ),
-        Field(
-            name="Water_Flow_L_min", 
-            dtype=Float32,
-            description="Water flow rate in Liters per minute"
-        ),
-        Field(
-            name="Water_Pressure_Bar", 
-            dtype=Float32,
-            description="Water pressure in Bar"
-        ),
-        
-        # ====================================================================
-        # RAW SENSOR READINGS - Vibration
-        # ====================================================================
-        Field(
-            name="Vibration_mm_s", 
-            dtype=Float32,
-            description="Current vibration measurement in mm/s"
-        ),
-        
-        # ====================================================================
-        # ENGINEERED FEATURES - Vibration Aggregates
-        # ====================================================================
-        Field(
-            name="Vibration_rollingMax_10min", 
-            dtype=Float32,
-            description="Rolling maximum vibration over last 10 minutes (engineered feature)"
-        ),
-        
-        # ====================================================================
-        # CONTEXTUAL FEATURES - Cycle Information
-        # ====================================================================
-        Field(
-            name="Cycle_Phase_ID", 
-            dtype=String,
-            description="Current phase of the wash cycle (e.g., Fill, Wash, Rinse, Spin)"
-        ),
+        Field(name="Cycle_Phase_ID", dtype=Int64),
+        Field(name="Current_L1", dtype=Float32),
+        Field(name="Current_L2", dtype=Float32),
+        Field(name="Current_L3", dtype=Float32),
+        Field(name="Voltage_L_L", dtype=Float32),
+        Field(name="Water_Temp_C", dtype=Float32),
+        Field(name="Motor_RPM", dtype=Float32),
+        Field(name="Water_Flow_L_min", dtype=Float32),
+        Field(name="Vibration_mm_s", dtype=Float32),
+        Field(name="Water_Pressure_Bar", dtype=Float32),
+        Field(name="Vibration_RollingMax_10min", dtype=Float32),
     ],
-    
-    source=stream_source,
-    online=True,  # Enable serving from Redis for real-time predictions
-    description="Real-time and batch features for washing machine anomaly detection"
+    source=stream_source, 
+)
+
+machines_batch = FeatureView(
+    name="machine_batch_features",
+    entities=[machine],
+    ttl=timedelta(days=365),
+    schema=[
+        Field(name="Cycle_Phase_ID", dtype=Int64),
+        Field(name="Current_L1", dtype=Float32),
+        Field(name="Current_L2", dtype=Float32),
+        Field(name="Current_L3", dtype=Float32),
+        Field(name="Voltage_L_L", dtype=Float32),
+        Field(name="Water_Temp_C", dtype=Float32),
+        Field(name="Motor_RPM", dtype=Float32),
+        Field(name="Water_Flow_L_min", dtype=Float32),
+        Field(name="Vibration_mm_s", dtype=Float32),
+        Field(name="Water_Pressure_Bar", dtype=Float32),
+        Field(name="Vibration_RollingMax_10min", dtype=Float32),
+    ],
+    source=machines_batch, 
 )
