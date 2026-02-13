@@ -1,0 +1,51 @@
+# Feature Engineering Configuration for Historical Ingestion
+# This config defines rolling window features for industrial washer vibration monitoring
+
+datasets:
+  - name: "industrial_washer_normal"
+    input_path: "data/synthetic_datasets/industrial_washer_normal"
+    output_path: "data/processed_datasets/industrial_washer_normal_features"
+    file_format: "parquet"
+    has_labels: false
+    
+  - name: "industrial_washer_with_anomalies"
+    input_path: "data/synthetic_datasets/industrial_washer_with_anomalies"
+    output_path: "data/processed_datasets/industrial_washer_with_anomalies_features"
+    file_format: "parquet"
+    has_labels: true
+    label_column: "is_anomaly"
+
+# Schema configuration
+schema:
+  timestamp_column: "timestamp"
+  partition_columns: ["Machine_ID"]  # Group rolling windows per machine
+  
+# Rolling window features
+rolling_features:
+  - feature_name: "Vibration_RollingMax_10min"
+    description: "Maximum vibration in the last 10 minutes - Critical for shock detection"
+    source_column: "Vibration_mm_s"
+    aggregation: "max"
+    window_duration: "10 minutes"
+    window_type: "time_based"
+    enabled: true
+    
+
+# Processing options
+processing:
+  repartition: false
+  num_partitions: 10
+  cache_intermediate: true
+  write_mode: "overwrite"  # Options: overwrite, append, error
+  
+# Data quality checks
+data_quality:
+  check_null_timestamps: true
+  check_duplicate_timestamps: true
+  fill_missing_values: false  # If true, forward fill missing values
+  
+# Performance tuning
+spark_config:
+  spark.sql.shuffle.partitions: 200
+  spark.sql.adaptive.enabled: true
+  spark.sql.adaptive.coalescePartitions.enabled: true

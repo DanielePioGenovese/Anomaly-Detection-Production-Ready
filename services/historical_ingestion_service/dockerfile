@@ -26,4 +26,4 @@ COPY services/historical_ingestion_service/src ./src/
 COPY services/historical_ingestion_service/config ./config/
 
 # 5. Run the script
-CMD ["uv", "run", "-m", "src.run_service"]
+CMD ["uv", "run", "-m", "src.hist_ingestion"]
