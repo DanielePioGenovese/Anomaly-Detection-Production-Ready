@@ -18,7 +18,7 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import *
 from pyspark.sql.window import Window
 
-from config import DATASETS_PATH
+from services.create_datasets_service.config import DATASETS_PATH
 def generate_industrial_washer_datasets(spark, num_rows=1_000_000, anomaly_rate=0.02, streaming : bool = False):
     """
     Generate two industrial washing machine sensor datasets.

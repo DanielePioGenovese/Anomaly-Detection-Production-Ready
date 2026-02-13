@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # directory
 # MODEL_REGISTRY_PATH = BASE_DIR / "models" 
 
-DATASETS_PATH = BASE_DIR / 'data' / 'synthetic_datasets'
+DATASETS_PATH = Path('data') / 'synthetic_datasets'
 
 # Spark configurations
 SPARK_APP_NAME = "Industrial Washer Generator"

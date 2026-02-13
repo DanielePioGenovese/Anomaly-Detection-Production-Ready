@@ -334,7 +334,7 @@ def main():
     parser.add_argument(
         '--config',
         type=str,
-        default='config/feature_engineering_config.yaml',
+        default='services/historical_ingestion_service/config/feature_engineering_config.yaml',
         help='Path to configuration YAML file'
     )
     parser.add_argument(

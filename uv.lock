@@ -2529,7 +2529,7 @@ ingestion = [
     { name = "scikit-learn" },
     { name = "scipy" },
 ]
-pyspark-services = [
+spark-services = [
     { name = "pyspark" },
     { name = "pyyaml" },
 ]
@@ -2559,7 +2559,7 @@ ingestion = [
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "scipy", specifier = ">=1.17.0" },
 ]
-pyspark-services = [
+spark-services = [
     { name = "pyspark", specifier = ">=4.1.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]

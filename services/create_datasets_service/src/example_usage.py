@@ -6,8 +6,8 @@ This script shows how to use the generator function and analyze the results.
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, count, avg, min, max, stddev
-from src.industrial_washer_generator import generate_industrial_washer_datasets, save_datasets
-from config import DATASETS_PATH
+from services.create_datasets_service.src.industrial_washer_generator import generate_industrial_washer_datasets, save_datasets
+from services.create_datasets_service.config import DATASETS_PATH
 
 # ============================================================================
 # 1. Initialize Spark

@@ -24,11 +24,9 @@ RUN uv sync --frozen --no-dev --group spark-services && \
     rm -rf /root/.cache/uv
 
 # 5. Copy ALL service code
-# We copy the services folder so this image has access to 
-# both scripts (dataset creation and hist_ingestion).
-# Structure inside container will be: /app/services/historical_ingestion_service/...
-COPY services/create_dataset_service services/
-COPY services/historical_ingestion_service services/
+
+COPY services/create_datasets_service/ services/create_datasets_service/
+COPY services/historical_ingestion_service/ services/historical_ingestion_service/
 
 # 6. Set the entrypoint to uv run
 ENTRYPOINT ["uv", "run"]
