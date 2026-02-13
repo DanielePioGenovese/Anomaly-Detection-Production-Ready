@@ -2527,6 +2527,7 @@ feature-store-apply = [
 ]
 hist-ingestion = [
     { name = "pyspark" },
+    { name = "pyyaml" },
 ]
 ingestion = [
     { name = "confluent-kafka" },
@@ -2557,7 +2558,10 @@ dataset-creation-2 = [
     { name = "sdv", specifier = ">=1.33.0" },
 ]
 feature-store-apply = [{ name = "feast", extras = ["redis"], specifier = ">=0.58.0" }]
-hist-ingestion = [{ name = "pyspark", specifier = ">=4.1.1" }]
+hist-ingestion = [
+    { name = "pyspark", specifier = ">=4.1.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+]
 ingestion = [
     { name = "confluent-kafka", specifier = ">=2.4,<2.12" },
     { name = "numpy", specifier = ">=2.4.1" },
