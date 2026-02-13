@@ -14,7 +14,8 @@ from feast.infra.offline_store.file_source import FileSource
 
 machines_batch = FileSource(
     name="washing_batch_source",
-    path="/app/data/offline/machines_batch_features"
+    path="/app/data/offline/machines_batch_features",
+    timestamp_field='timestamp'
 )
 
 #####

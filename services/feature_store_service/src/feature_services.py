@@ -6,7 +6,7 @@ They act as a contract between feature producers and consumers (ML models).
 """
 
 from feast import FeatureService 
-from features import machine_view
+from src.features import machine_stream_features, machines_batch_features
 
 # ============================================================================
 # ANOMALY DETECTION SERVICE
@@ -17,7 +17,8 @@ from features import machine_view
 machine_feature_service_v1 = FeatureService(
     name="machine_anomaly_service_v1",
     features=[
-        machine_view,  # All machine fatures (sensors + engineered)
+        machine_stream_features,  # All machine fatures (sensors + engineered)
+        machines_batch_features
     ],
     description="Feature service for washing machine anomaly detection model v1"
 )

@@ -11,8 +11,8 @@ Feature views specify:
 
 from datetime import timedelta
 from feast import FeatureView, Field
-from feast.types import Float32, String, Int64
-from entity import machine
+from feast.types import Float32, Int64
+from src.entity import machine
 from src.data_sources import machines_batch, stream_source
 
 
@@ -36,7 +36,7 @@ machine_stream_features = FeatureView(
     source=stream_source, 
 )
 
-machines_batch = FeatureView(
+machines_batch_features = FeatureView(
     name="machine_batch_features",
     entities=[machine],
     ttl=timedelta(days=365),
@@ -55,3 +55,4 @@ machines_batch = FeatureView(
     ],
     source=machines_batch, 
 )
+
