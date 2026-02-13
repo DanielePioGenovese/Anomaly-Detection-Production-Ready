@@ -22,7 +22,7 @@ from data_sources import stream_source
 # Groups all sensor readings and engineered features for washing machines
 machine_view = FeatureView(
     name="machine_stream_features_v1",
-    version=1,
+    version=1, # to Remove
     entities=[machine],
     ttl=timedelta(days=7),  # Features expire after 7 days in online store (Redis)
     
