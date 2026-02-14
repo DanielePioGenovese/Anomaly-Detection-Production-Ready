@@ -31,6 +31,7 @@ training_ml = [
 ]
 feature_store = [
     "feast[redis]>=0.58.0",
+    "pandas>=2.3.3",
 ]
 dataset-creation-2 = [
     "scikit-learn>=1.8.0",
