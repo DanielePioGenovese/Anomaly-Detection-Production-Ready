@@ -13,3 +13,13 @@ create_datasets:
 run_all:
 	uv sync
 	docker compose up --build create_datasets hist_ingestion
+
+# NEW: Complete reset and rebuild of the environment
+reboot:
+	docker compose down -v --remove-orphans
+	docker compose up --build -d
+
+# NEW: Deep cleaning of docker system (use with caution)
+clean_all:
+	docker compose down -v --remove-orphans
+	docker system prune -f --volumes
