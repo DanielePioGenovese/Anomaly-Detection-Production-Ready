@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     entity_df_path: str = "data/entity_df.parquet"
     feast_repo_path: str = "./feature_repo"
     feature_service_name: str = ""
-    event_timestamp_column: str = "event_timestamp"
+    event_timestamp_column: str = "timestamp"
     output_dir: str = "outputs"
     
 
