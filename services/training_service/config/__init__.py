@@ -1,1 +1,1 @@
-from config.config import IsolationForestConfig
+from config.config import TrainingConfig, config
