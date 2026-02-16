@@ -18,8 +18,8 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import *
 from pyspark.sql.window import Window
 
-from config import DATASETS_PATH
-def generate_industrial_washer_datasets(spark, num_rows=1_000_000, anomaly_rate=0.02):
+from services.create_datasets_service.config import DATASETS_PATH
+def generate_industrial_washer_datasets(spark, num_rows=1_000_000, anomaly_rate=0.02, streaming : bool = False):
     """
     Generate two industrial washing machine sensor datasets.
     
@@ -49,14 +49,44 @@ def generate_industrial_washer_datasets(spark, num_rows=1_000_000, anomaly_rate=
     # Create base dataframe with sequential IDs
     base_df = spark.range(num_rows).withColumn("row_id", col("id"))
     
+    if streaming:
+        # Path to normal dataset
+        previous_data_path = f"{DATASETS_PATH}/industrial_washer_normal"
+        
+        try:
+            # Read only timestamp column
+            print(f"Reading last timestamp from: {previous_data_path}...")
+            last_ts_row = spark.read.parquet(previous_data_path) \
+                .select("timestamp") \
+                .agg(max("timestamp").alias("max_ts")) \
+                .collect()
+            
+            last_timestamp = last_ts_row[0]["max_ts"]
+            print(f"Last timestamp found: {last_timestamp}")
+            
+            start_time_expr = unix_timestamp(lit(last_timestamp)) + 1
+            
+        except Exception as e:
+            print(f"WARNING: Could not read previous dataset ({e}). Defaulting to current time.")
+            from pyspark.sql.functions import current_timestamp
+            start_time_expr = unix_timestamp(current_timestamp())
+            
+    else:
+        # Training dataset
+        start_time_expr = unix_timestamp(lit("2024-01-01 00:00:00"))
+
+    # =========================================================================
+    # STEP 1: Generate base normal dataset
+    # =========================================================================
+    
+    # Create base dataframe with sequential IDs
+    base_df = spark.range(num_rows).withColumn("row_id", col("id"))
+    
     # Generate timestamp and Machine_ID
-    # All 10 machines report at the same timestamp, advancing every second
-    # For 1M rows: 100,000 unique timestamps, 10 machines per timestamp
     df = base_df.select(
-        # Timestamp advances every 10 rows (every second)
+        # Timestamp advances every 10 rows (every second) relative to start_time_expr
         from_unixtime(
-            unix_timestamp(lit("2024-01-01 00:00:00")) + 
-            floor(col("row_id") / 10)
+            start_time_expr + floor(col("row_id") / 10)
         ).alias("timestamp"),
         
         # 10 different industrial washing machines (cycles through 1-10 for each timestamp)
@@ -68,6 +98,7 @@ def generate_industrial_washer_datasets(spark, num_rows=1_000_000, anomaly_rate=
         # Random seed for variations
         col("row_id")
     )
+        
     
     # =========================================================================
     # STEP 2: Add realistic electrical and sensor parameters per cycle phase
@@ -302,7 +333,7 @@ def generate_industrial_washer_datasets(spark, num_rows=1_000_000, anomaly_rate=
     return normal_df, anomaly_df
 
 
-def save_datasets(normal_df, anomaly_df, output_path=DATASETS_PATH):
+def save_datasets(normal_df, anomaly_df, output_path=DATASETS_PATH, streaming : bool = False):
     """
     Save both datasets to Parquet format.
     
@@ -318,29 +349,52 @@ def save_datasets(normal_df, anomaly_df, output_path=DATASETS_PATH):
     
     print(f"\nSaving datasets to {output_path}...")
     
+    if not streaming:
     # Save normal dataset
-    normal_path = f"{output_path}/industrial_washer_normal"
-    normal_df.write.mode("overwrite").parquet(normal_path)
-    print(f"✓ Normal dataset saved to: {normal_path}")
-    
-    # Save anomaly dataset
-    anomaly_path = f"{output_path}/industrial_washer_with_anomalies"
-    anomaly_df.write.mode("overwrite").parquet(anomaly_path)
-    print(f"✓ Anomaly dataset saved to: {anomaly_path}")
-    
-    # Also save as CSV for easier inspection (only first 10K rows to save space)
-    print("\nSaving sample CSV files (first 10,000 rows)...")
-    
-    normal_df.limit(10000).coalesce(1).write.mode("overwrite") \
-        .option("header", "true") \
-        .csv(f"{output_path}/industrial_washer_normal_sample")
-    print(f"✓ Normal sample CSV saved")
-    
-    anomaly_df.limit(10000).coalesce(1).write.mode("overwrite") \
-        .option("header", "true") \
-        .csv(f"{output_path}/industrial_washer_with_anomalies_sample")
-    print(f"✓ Anomaly sample CSV saved")
+        normal_path = f"{output_path}/industrial_washer_normal"
+        normal_df.write.mode("overwrite").parquet(normal_path)
+        print(f"✓ Normal dataset saved to: {normal_path}")
+        
+        # Save anomaly dataset
+        anomaly_path = f"{output_path}/industrial_washer_with_anomalies"
+        anomaly_df.write.mode("overwrite").parquet(anomaly_path)
+        print(f"✓ Anomaly dataset saved to: {anomaly_path}")
+        
+        # Also save as CSV for easier inspection (only first 10K rows to save space)
+        print("\nSaving sample CSV files (first 10,000 rows)...")
+        
+        normal_df.limit(10000).coalesce(1).write.mode("overwrite") \
+            .option("header", "true") \
+            .csv(f"{output_path}/industrial_washer_normal_sample")
+        print(f"✓ Normal sample CSV saved")
+        
+        anomaly_df.limit(10000).coalesce(1).write.mode("overwrite") \
+            .option("header", "true") \
+            .csv(f"{output_path}/industrial_washer_with_anomalies_sample")
+        print(f"✓ Anomaly sample CSV saved")
 
+    else:
+        normal_path = f"{output_path}/industrial_washer_normal_streaming"
+        normal_df.write.mode("overwrite").parquet(normal_path)
+        print(f"✓ Normal dataset streaming saved to: {normal_path}")
+        
+        # Save anomaly dataset
+        anomaly_path = f"{output_path}/industrial_washer_with_anomalies_streaming"
+        anomaly_df.write.mode("overwrite").parquet(anomaly_path)
+        print(f"✓ Anomaly dataset streaming saved to: {anomaly_path}")
+        
+        # Also save as CSV for easier inspection (only first 10K rows to save space)
+        print("\nSaving sample CSV files (first 10,000 rows)...")
+        
+        normal_df.limit(10000).coalesce(1).write.mode("overwrite") \
+            .option("header", "true") \
+            .csv(f"{output_path}/industrial_washer_normal_sample_streaming")
+        print(f"✓ Normal sample streaming CSV saved")
+        
+        anomaly_df.limit(10000).coalesce(1).write.mode("overwrite") \
+            .option("header", "true") \
+            .csv(f"{output_path}/industrial_washer_with_anomalies_sample_streaming")
+        print(f"✓ Anomaly sample streaming CSV saved")
 
 def display_sample_data(normal_df, anomaly_df):
     """Display sample records from both datasets."""

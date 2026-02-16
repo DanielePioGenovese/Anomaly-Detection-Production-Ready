@@ -1,7 +1,0 @@
-from .config import BASE_DIR, RAW_DATA_PATH, PROCESSED_DATA, TRAIN_LABELS, TRAIN, TEST
-
-__all__ = (
-    "BASE_DIR",
-    "RAW_DATA_PATH",
-    "PROCESSED_DATA_PATH"
-)
