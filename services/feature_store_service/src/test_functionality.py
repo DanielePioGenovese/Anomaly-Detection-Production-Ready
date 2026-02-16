@@ -10,7 +10,7 @@ This script demonstrates how to use the Feast API for:
 if __name__ == '__main__':
 
     import pandas as pd
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from feast import FeatureStore
 
     # Initialize feature store (repo_path must match feature_store.yaml location)
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     print("\n[TEST 2] Getting online features using feature service...")
 
     try:
-        # FIXED: Get the feature service object first, then pass it to get_online_features
+        # Get the feature service object first, then pass it to get_online_features
         feature_service = store.get_feature_service("machine_anomaly_service_v1")
         
         features = store.get_online_features(
@@ -79,10 +79,12 @@ if __name__ == '__main__':
 
     try:
         # Create sample streaming data
-        now = datetime.now()
+        # Use pandas Timestamp for proper datetime handling
+        now = pd.Timestamp.now(tz=None)  # Explicitly timezone-naive
+        
         streaming_data = pd.DataFrame({
             "Machine_ID": [1, 2, 3],
-            "event_timestamp": [now, now, now],  # FIXED: Changed from "timestamp" to "event_timestamp"
+            "event_timestamp": [now, now, now],
             "Cycle_Phase_ID": [2, 3, 1],
             "Current_L1": [12.5, 13.2, 11.8],
             "Current_L2": [12.3, 13.1, 11.9],
@@ -96,7 +98,6 @@ if __name__ == '__main__':
             "Vibration_RollingMax_10min": [3.5, 3.2, 3.8]
         })
         
-        # FIXED: Changed push_source_name from "machine_features" to "washing_stream_source"
         store.push(
             push_source_name="washing_stream_source",  # This matches the PushSource name in data_sources.py
             df=streaming_data,
@@ -115,9 +116,12 @@ if __name__ == '__main__':
     print("\n[TEST 4] Materializing batch features to online store...")
 
     try:
-        # Materialize features from the last 7 days
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=7)
+        # Use pandas Timestamp for consistent datetime handling
+        # Ensure timezone-naive to match parquet data
+        end_date = pd.Timestamp.now(tz=None)
+        start_date = end_date - pd.Timedelta(days=7)
+        
+        print(f"  Materializing from {start_date} to {end_date}")
         
         store.materialize(
             start_date=start_date,
@@ -126,26 +130,43 @@ if __name__ == '__main__':
         )
         
         print("✓ Successfully materialized batch features")
-        print(f"Materialized data from {start_date.date()} to {end_date.date()}")
+        print(f"  Materialized data from {start_date.date()} to {end_date.date()}")
         
     except Exception as e:
         print(f"✗ Error: {e}")
+        import traceback
+        traceback.print_exc()
 
     # ============================================================================
+    # TEST 5: Get Historical Features (Offline Store)
+    # ============================================================================
+# ============================================================================
     # TEST 5: Get Historical Features (Offline Store)
     # ============================================================================
     print("\n[TEST 5] Getting historical features from offline store...")
 
     try:
-        # Create entity dataframe with timestamps
+        # FIX: Usiamo datetime.timezone.utc per rendere il timestamp "Aware"
+        from datetime import timezone 
+        
+        # Ottieni l'ora attuale in UTC esplicito
+        now = pd.Timestamp.now(tz=timezone.utc) 
+        
+        # Create entity dataframe with UTC timezone-aware timestamps
         entity_df = pd.DataFrame({
             "Machine_ID": [1, 2, 3],
             "event_timestamp": [
-                datetime.now() - timedelta(hours=1),
-                datetime.now() - timedelta(hours=2),
-                datetime.now() - timedelta(hours=3)
+                now - pd.Timedelta(hours=1),
+                now - pd.Timedelta(hours=2),
+                now - pd.Timedelta(hours=3)
             ]
         })
+        
+        # Verify the dtype is correct
+        print(f"  Entity timestamp dtype: {entity_df['event_timestamp'].dtype}")
+        # Dovrebbe stampare: datetime64[ns, UTC]
+        
+        print(f"  Requesting features for timestamps around {now}")
         
         training_df = store.get_historical_features(
             entity_df=entity_df,
@@ -157,12 +178,14 @@ if __name__ == '__main__':
         ).to_df()
         
         print("✓ Successfully retrieved historical features")
-        print(f"Retrieved {len(training_df)} rows")
-        print("\nSample data:")
+        print(f"  Retrieved {len(training_df)} rows")
+        print("\n  Sample data:")
         print(training_df.head())
         
     except Exception as e:
         print(f"✗ Error: {e}")
+        import traceback
+        traceback.print_exc()
 
     # ============================================================================
     # TEST 6: List Feature Views
@@ -174,7 +197,7 @@ if __name__ == '__main__':
         print("✓ Registered Feature Views:")
         for fv in feature_views:
             print(f"  - {fv.name}")
-            # FIXED: Handle both Entity objects and string names
+            # Handle both Entity objects and string names
             entity_names = [e.name if hasattr(e, 'name') else str(e) for e in fv.entities]
             print(f"    Entities: {entity_names}")
             print(f"    TTL: {fv.ttl}")

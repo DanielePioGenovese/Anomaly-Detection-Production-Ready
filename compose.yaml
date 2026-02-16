@@ -110,7 +110,7 @@ services:
       - FEAST_REPO_PATH=/feature_store_service
     volumes:
       # Read-only access to registry
-      - ./data/registry:/feature_store_service/data/registry:ro
+      - ./data/registry:/feature_store_service/data/registry
       # Read-only access to offline data
       - ./data/processed_datasets/industrial_washer_normal_features:/feature_store_service/data/offline:ro
     ports:
