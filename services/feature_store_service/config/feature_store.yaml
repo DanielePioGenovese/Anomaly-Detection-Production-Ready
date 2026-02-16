@@ -9,6 +9,6 @@ online_store:
 
 offline_store:
   type: file
-  path: /app/data/offline_store
+  path: /app/data/offline
 
 entity_key_serialization_version: 3
