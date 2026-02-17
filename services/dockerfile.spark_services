@@ -26,7 +26,7 @@ RUN uv sync --frozen --no-dev --group spark-services && \
 # 5. Copy ALL service code
 
 COPY services/create_datasets_service/ services/create_datasets_service/
-COPY services/historical_ingestion_service/ services/historical_ingestion_service/
+COPY services/data_engineering_service/ services/data_engineering_service/
 
 # 6. Set the entrypoint to uv run
 ENTRYPOINT ["uv", "run"]

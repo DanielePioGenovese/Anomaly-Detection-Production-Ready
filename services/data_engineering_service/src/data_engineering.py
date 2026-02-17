@@ -1,6 +1,10 @@
 """
 Historical Data Ingestion Service with Rolling Window Features
 Processes industrial washer data with configurable rolling aggregations
+
+Pipeline architecture:
+  - Streaming features : short-term rolling windows (seconds → minutes)
+  - Batch features     : long-term daily / weekly aggregations joined back to each row
 """
 
 from pyspark.sql import SparkSession, Window
@@ -26,7 +30,7 @@ class HistoricalIngestionService:
     def __init__(self, config_path: str):
         """
         Initialize the ingestion service
-        
+
         Args:
             config_path: Path to YAML configuration file
         """
@@ -58,10 +62,10 @@ class HistoricalIngestionService:
     def _parse_window_duration(self, duration_str: str) -> int:
         """
         Parse window duration string to seconds
-        
+
         Args:
             duration_str: Duration string like '10 minutes', '1 hour', '30 seconds'
-            
+
         Returns:
             Duration in seconds
         """
@@ -117,41 +121,118 @@ class HistoricalIngestionService:
                 logger.warning(f"Removed {dropped} duplicate timestamp-machine combinations")
         
         return df
-    
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DERIVED COLUMNS  (computed once, reused by streaming features that need
+    # a composite signal like current imbalance)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _compute_derived_columns(self, df: Any) -> Any:
+        """
+        Pre-compute derived scalar columns required by rolling feature configs
+        that declare a 'source_expression' instead of a plain source_column.
+
+        Each entry in rolling_features may optionally set:
+            source_expression: "derived"     # tells the engine to look for a
+            derived_column:    "some_col"    # pre-built column called 'some_col'
+
+        Currently supported derived columns
+        ------------------------------------
+        Current_Imbalance_Ratio
+            (max(L1, L2, L3) - min(L1, L2, L3)) / mean(L1, L2, L3)
+
+            Captures three-phase electrical imbalance in a single value.
+            A healthy motor stays below ~0.02; rising values signal
+            winding faults or bearing degradation well before vibration
+            changes become significant — ideal for an early-warning
+            streaming feature fed to the ML model.
+        """
+        logger.info("Computing derived columns for streaming features")
+
+        df = df.withColumn(
+            "Current_Imbalance_Ratio",
+            (
+                F.greatest("Current_L1", "Current_L2", "Current_L3") -
+                F.least("Current_L1", "Current_L2", "Current_L3")
+            ) / (
+                (F.col("Current_L1") + F.col("Current_L2") + F.col("Current_L3")) / 3
+            )
+        )
+
+        logger.info("  ✓ Derived column ready: Current_Imbalance_Ratio")
+        return df
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STREAMING FEATURES  (short-term rolling windows, seconds → minutes)
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _validate_rolling_feature(self, df: Any, feature_name: str, source_column: str, aggregation: str):
         """Validate rolling window feature calculations"""
         logger.info(f"  Validating rolling feature: {feature_name}")
         
-        # Validate based on aggregation type
         if aggregation == 'max':
-            # Rolling max should always be >= source value
+            # Rolling max must always be >= the instantaneous source value
             invalid_count = df.filter(F.col(feature_name) < F.col(source_column)).count()
             if invalid_count > 0:
-                logger.error(f"  ❌ VALIDATION FAILED: Found {invalid_count} rows where {feature_name} < {source_column}")
+                logger.error(
+                    f"  ❌ VALIDATION FAILED: Found {invalid_count} rows where "
+                    f"{feature_name} < {source_column}"
+                )
             else:
                 logger.info(f"  ✓ Validation passed: All rolling max values >= source values")
-                
+
+        elif aggregation == 'mean':
+            # For a rolling mean we check that it sits within [min, max] of the source
+            stats = df.select(
+                F.min(source_column).alias('src_min'),
+                F.max(source_column).alias('src_max'),
+                F.min(feature_name).alias('feat_min'),
+                F.max(feature_name).alias('feat_max'),
+            ).collect()[0]
+            if stats['feat_min'] < stats['src_min'] or stats['feat_max'] > stats['src_max']:
+                logger.warning(
+                    f"  ⚠ Rolling mean range [{stats['feat_min']:.4f}, {stats['feat_max']:.4f}] "
+                    f"outside source range [{stats['src_min']:.4f}, {stats['src_max']:.4f}]"
+                )
+            else:
+                logger.info(
+                    f"  ✓ Validation passed: Rolling mean in "
+                    f"[{stats['feat_min']:.4f}, {stats['feat_max']:.4f}]"
+                )
+            return  # early return — stats already logged
+
         else:
-            logger.error(f"❌ VALIDATION FAILED, aggregation must be 'max'")
+            logger.warning(f"  No specific validation implemented for aggregation '{aggregation}'")
         
-        # Check for unexpected null values
-        null_count = df.filter(F.col(feature_name).isNull() & F.col(source_column).isNotNull()).count()
+        # Shared null-value check
+        null_count = df.filter(
+            F.col(feature_name).isNull() & F.col(source_column).isNotNull()
+        ).count()
         if null_count > 0:
-            logger.warning(f"  ⚠ Found {null_count} null values in {feature_name} where source is not null")
+            logger.warning(
+                f"  ⚠ Found {null_count} null values in {feature_name} where source is not null"
+            )
         
-        # Show sample statistics
         stats = df.select(
             F.max(source_column).alias('source_max'),
-            F.max(feature_name).alias('rolling_max'),
+            F.max(feature_name).alias('rolling_result'),
         ).collect()[0]
-        
-        logger.info(f"  Statistics: Source [{stats['source_max']:.2f}], "
-                   f"Rolling [{stats['rolling_max']:.2f}]")
+        logger.info(
+            f"  Statistics: Source max [{stats['source_max']:.4f}], "
+            f"Rolling result max [{stats['rolling_result']:.4f}]"
+        )
     
     def _apply_rolling_features(self, df: Any) -> Any:
-        """Apply rolling window features based on configuration"""
+        """
+        Apply streaming rolling window features based on configuration.
 
-        logger.info("Applying rolling window features")
+        Supports two kinds of source:
+          1. Plain column   – set 'source_column' in the YAML entry.
+          2. Derived column – set 'source_expression: derived' + 'derived_column'
+             in the YAML entry; the column must have been pre-built by
+             _compute_derived_columns().
+        """
+        logger.info("Applying streaming (rolling window) features")
         
         timestamp_col = self.config['schema']['timestamp_column']
         partition_cols = self.config['schema']['partition_columns']
@@ -159,44 +240,53 @@ class HistoricalIngestionService:
         # Ensure timestamp is in correct format
         df = df.withColumn(timestamp_col, F.col(timestamp_col).cast(TimestampType()))
         
-        # Sort by timestamp and partition columns for correct ordering
+        # Sort by timestamp and partition columns for correct window ordering
         logger.info(f"Sorting data by {timestamp_col}, {partition_cols} for window calculations")
         df = df.orderBy(timestamp_col, *partition_cols)
+
+        # Pre-compute any derived scalar columns needed by rolling features
+        df = self._compute_derived_columns(df)
         
-        # Process each enabled rolling feature
-        # You can add any rolling feature you need in config file 
-        for feature_config in self.config['rolling_features']: 
+        # Process each enabled rolling feature (add any new one in the YAML)
+        for feature_config in self.config['rolling_features']:
             if not feature_config.get('enabled', False):
                 logger.info(f"Skipping disabled feature: {feature_config['feature_name']}")
                 continue
             
             feature_name = feature_config['feature_name']
-            source_column = feature_config['source_column']
             aggregation = feature_config['aggregation']
             window_duration_str = feature_config['window_duration']
+
+            # Resolve the source column (plain or derived)
+            source_expression = feature_config.get('source_expression', 'column')
+            if source_expression == 'derived':
+                source_column = feature_config['derived_column']
+            else:
+                source_column = feature_config['source_column']
             
             logger.info(f"Creating feature: {feature_name} ({feature_config['description']})")
-            logger.info(f"  Source: {source_column}, Aggregation: {aggregation}, Window: {window_duration_str}")
+            logger.info(
+                f"  Source: {source_column}, Aggregation: {aggregation}, "
+                f"Window: {window_duration_str}"
+            )
             
-            # Parse window duration
+            # Parse window duration to seconds for rangeBetween
             window_duration_seconds = self._parse_window_duration(window_duration_str)
             logger.info(f"  Window duration: {window_duration_seconds} seconds")
             
-            
-            # CRITICAL FIX: Create time-based window specification WITH partitionBy
-            # This ensures rolling windows are calculated SEPARATELY for each machine
-            # Without partitionBy, data from all machines would be mixed together!
+            # CRITICAL: partitionBy keeps each machine's rolling window independent
             window_spec = (
                 Window
-                .partitionBy(*partition_cols)  # SEPARATE WINDOWS PER MACHINE
+                .partitionBy(*partition_cols)
                 .orderBy(F.col(timestamp_col).cast("long"))
                 .rangeBetween(-window_duration_seconds, 0)
             )
             
-            # Apply aggregation function
-            # Add other aggregations inside the config file (if you need them, ex: STD, MEAN etc...)
+            # Apply aggregation — add more aggregation types here as needed
             if aggregation == 'max':
                 df = df.withColumn(feature_name, F.max(source_column).over(window_spec))
+            elif aggregation == 'mean':
+                df = df.withColumn(feature_name, F.mean(source_column).over(window_spec))
             else:
                 logger.warning(f"Unknown aggregation: {aggregation} for feature {feature_name}")
                 continue
@@ -205,15 +295,163 @@ class HistoricalIngestionService:
             if self.config.get('data_quality', {}).get('validate_rolling_windows', True):
                 self._validate_rolling_feature(df, feature_name, source_column, aggregation)
             
-            logger.info(f"✓ Created feature: {feature_name}")
+            logger.info(f"✓ Created streaming feature: {feature_name}")
         
-        # CRITICAL FIX: Re-sort by timestamp and machine_ID to match required output format
-        # Output format: time 00:00:00 Machine 1, time 00:00:00 Machine 2, etc.
-        logger.info(f"Final sort: Re-ordering data by {timestamp_col}, {partition_cols} to maintain required order")
+        # CRITICAL: re-sort so output order is timestamp → Machine_ID (required format)
+        logger.info(
+            f"Final sort: Re-ordering data by {timestamp_col}, {partition_cols} "
+            "to maintain required output order"
+        )
         df = df.orderBy(timestamp_col, *partition_cols)
         
         return df
-    
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # BATCH FEATURES  (daily / weekly aggregations joined back to each row)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _validate_batch_feature(self, df: Any, feature_name: str, aggregation: str):
+        """Light-weight sanity check for a batch-aggregated column."""
+        logger.info(f"  Validating batch feature: {feature_name}")
+
+        null_count = df.filter(F.col(feature_name).isNull()).count()
+        if null_count > 0:
+            logger.warning(f"  ⚠ {null_count} null values found in {feature_name}")
+        else:
+            logger.info(f"  ✓ No null values in {feature_name}")
+
+        stats = df.select(
+            F.min(feature_name).alias('min_val'),
+            F.max(feature_name).alias('max_val'),
+            F.mean(feature_name).alias('mean_val'),
+        ).collect()[0]
+        logger.info(
+            f"  Statistics: min={stats['min_val']:.4f}, "
+            f"max={stats['max_val']:.4f}, mean={stats['mean_val']:.4f}"
+        )
+
+    def _apply_batch_features(self, df: Any) -> Any:
+        """
+        Compute long-term batch aggregations (daily / weekly) and join them
+        back to every individual row so the ML model can access them as
+        additional input features.
+
+        How it works
+        ------------
+        1. Truncate each row's timestamp to the desired period (day or week).
+        2. Group by [Machine_ID, period] and compute the chosen aggregation.
+        3. Left-join the aggregated frame back to the original data on
+           [Machine_ID, period], then drop the helper period column.
+
+        This pattern is equivalent to Spark's rangeBetween with very large
+        windows but is computed much more efficiently because it leverages
+        a simple groupBy rather than a full partition-wide sort + scan.
+
+        Batch features defined in the YAML
+        ------------------------------------
+        Daily_Vibration_PeakMean_Ratio  (aggregation_type: daily)
+            max(Vibration_mm_s) / mean(Vibration_mm_s)  per machine per day.
+
+            The ratio measures how "spiky" a machine's vibration is during
+            a given day relative to its baseline.  A healthy machine keeps
+            this ratio low and stable; a machine developing a mechanical
+            fault shows rising ratios before absolute vibration thresholds
+            are breached.  Giving the ML model this daily context alongside
+            real-time readings allows it to distinguish a momentary bump
+            (low daily ratio) from a persistent anomaly (high daily ratio).
+
+        Weekly_Current_StdDev  (aggregation_type: weekly)
+            stddev(Current_L1) per machine per week.
+
+            Motors with healthy windings draw a steady current.  As
+            insulation degrades or bearings wear, current draw becomes
+            erratic and the within-week standard deviation grows.  A weekly
+            aggregation smooths out normal load fluctuations and exposes
+            the gradual trend — exactly the signal that is invisible to
+            short streaming windows but important for a predictive model.
+        """
+        batch_features = self.config.get('batch_features', [])
+        if not batch_features:
+            logger.info("No batch features configured — skipping")
+            return df
+
+        logger.info("Applying batch (daily/weekly) features")
+
+        timestamp_col = self.config['schema']['timestamp_column']
+        partition_cols = self.config['schema']['partition_columns']
+        # Internal helper column name — guaranteed not to clash with real columns
+        PERIOD_COL = "_batch_period_"
+
+        for feature_config in batch_features:
+            if not feature_config.get('enabled', False):
+                logger.info(f"Skipping disabled batch feature: {feature_config['feature_name']}")
+                continue
+
+            feature_name    = feature_config['feature_name']
+            source_column   = feature_config['source_column']
+            aggregation     = feature_config['aggregation']
+            aggregation_type = feature_config['aggregation_type']  # 'daily' or 'weekly'
+
+            logger.info(f"Creating batch feature: {feature_name} ({feature_config['description']})")
+            logger.info(
+                f"  Source: {source_column}, Aggregation: {aggregation}, "
+                f"Period: {aggregation_type}"
+            )
+
+            # ── Step 1: truncate timestamp to the chosen period ──────────────
+            if aggregation_type == 'daily':
+                period_expr = F.date_trunc('day', F.col(timestamp_col))
+            elif aggregation_type == 'weekly':
+                period_expr = F.date_trunc('week', F.col(timestamp_col))
+            else:
+                logger.warning(
+                    f"Unknown aggregation_type '{aggregation_type}' for {feature_name} — skipping"
+                )
+                continue
+
+            df = df.withColumn(PERIOD_COL, period_expr)
+
+            # ── Step 2: aggregate per [machine, period] ──────────────────────
+            if aggregation == 'ratio_max_mean':
+                # max / mean — detects spiky / impulsive behaviour vs baseline
+                agg_df = df.groupBy(*partition_cols, PERIOD_COL).agg(
+                    (F.max(source_column) / F.mean(source_column)).alias(feature_name)
+                )
+            elif aggregation == 'std':
+                agg_df = df.groupBy(*partition_cols, PERIOD_COL).agg(
+                    F.stddev(source_column).alias(feature_name)
+                )
+            elif aggregation == 'mean':
+                agg_df = df.groupBy(*partition_cols, PERIOD_COL).agg(
+                    F.mean(source_column).alias(feature_name)
+                )
+            elif aggregation == 'max':
+                agg_df = df.groupBy(*partition_cols, PERIOD_COL).agg(
+                    F.max(source_column).alias(feature_name)
+                )
+            else:
+                logger.warning(
+                    f"Unknown aggregation '{aggregation}' for batch feature {feature_name} — skipping"
+                )
+                df = df.drop(PERIOD_COL)
+                continue
+
+            # ── Step 3: join aggregate back to every row ─────────────────────
+            join_keys = [*partition_cols, PERIOD_COL]
+            df = df.join(agg_df, on=join_keys, how='left').drop(PERIOD_COL)
+
+            # Validate
+            if self.config.get('data_quality', {}).get('validate_batch_features', True):
+                self._validate_batch_feature(df, feature_name, aggregation)
+
+            logger.info(f"✓ Created batch feature: {feature_name}")
+
+        return df
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # I/O helpers
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _write_dataset(self, df: Any, dataset_config: Dict):
         """Write processed dataset WITHOUT Machine_ID partitioning (flat structure)"""
         output_path = dataset_config['output_path']
@@ -223,8 +461,7 @@ class HistoricalIngestionService:
         
         logger.info(f"Writing dataset to {output_path} (mode: {write_mode})")
         
-        # Final sort to ensure correct order: timestamp, then Machine_ID
-        # This matches the screenshot: 2024-01-01 00:00:00 Machine 1, 2, 3, 4...
+        # Final sort: timestamp → Machine_ID (matches required output format)
         logger.info(f"Final sort by {timestamp_col}, {partition_cols} before writing")
         df = df.orderBy(timestamp_col, *partition_cols)
         
@@ -235,18 +472,18 @@ class HistoricalIngestionService:
         # Optional repartitioning for better parallelism
         if self.config['processing'].get('repartition', False):
             num_partitions = self.config['processing'].get('num_partitions', 10)
-            logger.info(f"Repartitioning to {num_partitions} partitions and sorting internally")
-            
+            logger.info(f"Repartitioning to {num_partitions} partitions")
         
-        # CRITICAL FIX: Write WITHOUT partitionBy to avoid Machine_ID folders
-        # This creates multiple parquet files in a flat structure, just like the original datasets
-        logger.info(f"Writing without partitionBy - creating flat parquet structure")
+        # CRITICAL: write WITHOUT partitionBy → flat parquet structure (no Machine_ID folders)
+        logger.info("Writing without partitionBy — creating flat parquet structure")
         df.write \
             .mode(write_mode) \
             .parquet(output_path)
         
         logger.info(f"✓ Dataset written successfully")
-        logger.info(f"   Output structure: {output_path}/part-*.parquet (flat structure, no Machine_ID folders)")
+        logger.info(
+            f"   Output structure: {output_path}/part-*.parquet (flat, no Machine_ID folders)"
+        )
     
     def _verify_timestamp_order(self, df: Any):
         """Verify that timestamps are in chronological order within each partition"""
@@ -255,7 +492,6 @@ class HistoricalIngestionService:
         timestamp_col = self.config['schema']['timestamp_column']
         partition_cols = self.config['schema']['partition_columns']
         
-        # Sample check: Get first and last timestamp for each machine
         summary = df.groupBy(partition_cols).agg(
             F.min(timestamp_col).alias('first_timestamp'),
             F.max(timestamp_col).alias('last_timestamp'),
@@ -265,16 +501,18 @@ class HistoricalIngestionService:
         logger.info("Timestamp range per machine:")
         summary.show(10, truncate=False)
         
-        # Show sample of final output order
         logger.info("Sample of final output order (first 20 rows):")
         df.select(timestamp_col, *partition_cols).show(20, truncate=False)
 
-    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Main orchestration
+    # ─────────────────────────────────────────────────────────────────────────
+
     def process_dataset(self, dataset_config: Dict):
-        """Process a single dataset with rolling features"""
-        logger.info(f"=" * 80)
+        """Process a single dataset: streaming rolling features + batch features"""
+        logger.info("=" * 80)
         logger.info(f"Processing dataset: {dataset_config['name']}")
-        logger.info(f"=" * 80)
+        logger.info("=" * 80)
         
         # Read data
         df = self._read_dataset(dataset_config)
@@ -282,12 +520,15 @@ class HistoricalIngestionService:
         # Data quality checks
         df = self._validate_data_quality(df, dataset_config)
         
-        # Cache if configured
+        # Cache after quality checks — will be reused by both feature stages
         if self.config['processing'].get('cache_intermediate', False):
             df = df.cache()
         
-        # Apply rolling features
+        # ── Streaming pipeline features ──────────────────────────────────────
         df = self._apply_rolling_features(df)
+
+        # ── Batch pipeline features ──────────────────────────────────────────
+        df = self._apply_batch_features(df)
         
         # Show sample results
         logger.info("Sample output (first 5 rows):")
@@ -311,7 +552,9 @@ class HistoricalIngestionService:
             try:
                 self.process_dataset(dataset_config)
             except Exception as e:
-                logger.error(f"Error processing {dataset_config['name']}: {str(e)}", exc_info=True)
+                logger.error(
+                    f"Error processing {dataset_config['name']}: {str(e)}", exc_info=True
+                )
                 continue
         
         logger.info("=" * 80)
@@ -334,7 +577,7 @@ def main():
     parser.add_argument(
         '--config',
         type=str,
-        default='services/historical_ingestion_service/config/feature_engineering_config.yaml',
+        default='services/data_engineering_service/config/feature_engineering_config.yaml',
         help='Path to configuration YAML file'
     )
     parser.add_argument(
@@ -346,12 +589,10 @@ def main():
     
     args = parser.parse_args()
     
-    # Initialize service
     service = HistoricalIngestionService(args.config)
     
     try:
         if args.dataset:
-            # Process specific dataset
             dataset_config = next(
                 (d for d in service.config['datasets'] if d['name'] == args.dataset),
                 None
@@ -362,7 +603,6 @@ def main():
                 logger.error(f"Dataset '{args.dataset}' not found in configuration")
                 sys.exit(1)
         else:
-            # Process all datasets
             service.process_all_datasets()
     finally:
         service.stop()

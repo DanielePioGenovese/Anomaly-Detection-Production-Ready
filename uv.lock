@@ -2508,6 +2508,10 @@ version = "0.1.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
+data-engineering = [
+    { name = "pyspark" },
+    { name = "pyyaml" },
+]
 dataset-creation = [
     { name = "pyspark" },
 ]
@@ -2518,10 +2522,6 @@ dataset-creation-2 = [
 feature-store = [
     { name = "feast", extra = ["redis"] },
     { name = "pandas" },
-]
-hist-ingestion = [
-    { name = "pyspark" },
-    { name = "pyyaml" },
 ]
 ingestion = [
     { name = "confluent-kafka" },
@@ -2543,6 +2543,10 @@ training-ml = [
 [package.metadata]
 
 [package.metadata.requires-dev]
+data-engineering = [
+    { name = "pyspark", specifier = ">=4.1.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+]
 dataset-creation = [{ name = "pyspark", specifier = ">=4.1.1" }]
 dataset-creation-2 = [
     { name = "scikit-learn", specifier = ">=1.8.0" },
@@ -2551,10 +2555,6 @@ dataset-creation-2 = [
 feature-store = [
     { name = "feast", extras = ["redis"], specifier = ">=0.58.0" },
     { name = "pandas", specifier = ">=2.3.3" },
-]
-hist-ingestion = [
-    { name = "pyspark", specifier = ">=4.1.1" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 ingestion = [
     { name = "confluent-kafka", specifier = ">=2.4,<2.12" },

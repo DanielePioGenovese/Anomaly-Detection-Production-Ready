@@ -1,5 +1,7 @@
 # Feature Engineering Configuration for Historical Ingestion
-# This config defines rolling window features for industrial washer vibration monitoring
+# This config defines:
+#   - rolling_features  → streaming pipeline (short-term rolling windows)
+#   - batch_features    → batch pipeline (daily / weekly aggregations)
 
 datasets:
   - name: "industrial_washer_normal"
@@ -15,36 +17,139 @@ datasets:
     has_labels: true
     label_column: "is_anomaly"
 
-# Schema configuration
+# ── Schema ────────────────────────────────────────────────────────────────────
 schema:
   timestamp_column: "timestamp"
-  partition_columns: ["Machine_ID"]  # Group rolling windows per machine
-  
-# Rolling window features
+  partition_columns: ["Machine_ID"]  # Rolling windows are computed per machine
+
+# ── Streaming pipeline features ───────────────────────────────────────────────
+# Short-term rolling windows: designed to catch real-time anomalies within a
+# single cycle or a few minutes of machine operation.
+#
+# source_expression options:
+#   "column"  → use source_column directly (default)
+#   "derived" → use derived_column (pre-computed in _compute_derived_columns)
+
 rolling_features:
+
+  # ── Feature 1 (existing) ──────────────────────────────────────────────────
   - feature_name: "Vibration_RollingMax_10min"
-    description: "Maximum vibration in the last 10 minutes - Critical for shock detection"
+    description: >
+      Maximum vibration in the last 10 minutes.
+      Catches shock events and sudden mechanical impacts in real time.
+      Feeding the rolling max rather than the raw value makes the ML model
+      robust to single noisy readings.
     source_column: "Vibration_mm_s"
+    source_expression: "column"
     aggregation: "max"
     window_duration: "10 minutes"
     window_type: "time_based"
     enabled: true
-    
 
-# Processing options
+  # ── Feature 2 (NEW — streaming) ───────────────────────────────────────────
+  - feature_name: "Current_Imbalance_RollingMean_5min"
+    description: >
+      5-minute rolling mean of three-phase current imbalance ratio:
+        (max(L1,L2,L3) - min(L1,L2,L3)) / mean(L1,L2,L3)
+
+      WHY this works as a streaming feature:
+        Motor faults — winding degradation, bearing wear, phase loss — manifest
+        as electrical current imbalance *before* they appear in vibration or
+        temperature.  A 5-minute rolling mean filters millisecond switching
+        noise while remaining reactive enough to catch emerging faults
+        within the same operational cycle.
+
+      ML model benefit:
+        Pairing this with Vibration_RollingMax_10min gives the model two
+        complementary real-time signals — electrical and mechanical — which
+        dramatically reduces false-negative anomaly detections.
+
+      The raw Current_Imbalance_Ratio derived column is pre-computed by
+      _compute_derived_columns() and referenced here via source_expression.
+    source_expression: "derived"
+    derived_column: "Current_Imbalance_Ratio"
+    aggregation: "mean"
+    window_duration: "5 minutes"
+    window_type: "time_based"
+    enabled: true
+
+# ── Batch pipeline features ───────────────────────────────────────────────────
+# Long-term daily / weekly aggregations.  Each value is computed per
+# [Machine_ID, period] and then joined back to every individual row so the
+# ML model receives both the real-time sensor reading *and* the broader
+# operational context for that machine on that day / week.
+#
+# Supported aggregations: ratio_max_mean | std | mean | max
+# Supported aggregation_type: daily | weekly
+
+batch_features:
+
+  # ── Batch feature 1 (daily) ───────────────────────────────────────────────
+  - feature_name: "Daily_Vibration_PeakMean_Ratio"
+    description: >
+      Per machine, per calendar day:
+        max(Vibration_mm_s) / mean(Vibration_mm_s)
+
+      WHY this works as a batch feature:
+        A single vibration spike can be caused by an external bump and is not
+        informative on its own.  When the daily peak-to-mean ratio is high,
+        it means the machine experienced repeated or sustained shock events
+        throughout the day — a strong indicator of mechanical deterioration
+        such as a loose bearing or unbalanced drum.
+
+        Computing this over a full day's data (hundreds of cycles) removes
+        the noise present in short streaming windows and gives the ML model
+        a stable daily health score for each machine.  Anomaly labels
+        typically correlate with days where this ratio is persistently above
+        the normal distribution, making it a high-signal batch feature.
+
+    source_column: "Vibration_mm_s"
+    aggregation: "ratio_max_mean"
+    aggregation_type: "daily"
+    enabled: true
+
+  # ── Batch feature 2 (weekly) ──────────────────────────────────────────────
+  - feature_name: "Weekly_Current_StdDev"
+    description: >
+      Per machine, per calendar week:
+        stddev(Current_L1)
+
+      WHY this works as a batch feature:
+        A healthy motor draws current with low within-week variability.  As
+        insulation degrades or mechanical resistance in the drum increases,
+        the motor controller compensates by varying the current draw more
+        aggressively — the within-week standard deviation grows.
+
+        This trend is invisible to 5- or 10-minute streaming windows because
+        it develops slowly across many cycles.  A weekly aggregation (up to
+        ~7 days of readings per machine) smooths daily load differences
+        (e.g. wash program type) and exposes the underlying degradation
+        signal.  Even with only one month of data the model will see 4
+        weekly data points per machine — enough to learn the normal range
+        and flag machines whose weekly StdDev is trending upward.
+
+    source_column: "Current_L1"
+    aggregation: "std"
+    aggregation_type: "weekly"
+    enabled: true
+
+# ── Processing options ────────────────────────────────────────────────────────
 processing:
   repartition: false
   num_partitions: 10
   cache_intermediate: true
   write_mode: "overwrite"  # Options: overwrite, append, error
-  
-# Data quality checks
+
+# ── Data quality checks ───────────────────────────────────────────────────────
 data_quality:
   check_null_timestamps: true
   check_duplicate_timestamps: true
-  fill_missing_values: false  # If true, forward fill missing values
-  
-# Performance tuning
+  fill_missing_values: false
+  validate_rolling_windows: true   # Validates streaming features after computation
+  validate_batch_features: true    # Validates batch features after join
+  verify_timestamp_order: true
+
+# ── Spark performance tuning ──────────────────────────────────────────────────
 spark_config:
   spark.sql.shuffle.partitions: 200
   spark.sql.adaptive.enabled: true

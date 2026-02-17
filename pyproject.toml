@@ -19,7 +19,7 @@ ingestion = [
 ]
 
 
-hist_ingestion = [
+data-engineering = [
     "pyspark>=4.1.1",
     "pyyaml>=6.0.3",
 ]
