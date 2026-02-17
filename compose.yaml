@@ -215,6 +215,21 @@ services:
       context: .
       dockerfile: services/mlflow/Dockerfile
     container_name: mlflow
+    command:
+      - uv
+      - run
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --backend-store-uri
+      - sqlite:////mlflow/mlflow.db
+      - --artifacts-destination
+      - /mlflow/artifacts
+      - --allowed-hosts
+      - "localhost:*,127.0.0.1:*,mlflow:5000"
     ports:
       - "5000:5000"
     volumes:
@@ -222,24 +237,34 @@ services:
     restart: unless-stopped
     networks:
       - anomaly-detection-network
+    
+    
   training_pipeline:
-  build:
-    context: .
-    dockerfile: services/training_service/Dockerfile
-  container_name: training_pipeline
-  depends_on:
-    - mlflow
-  networks:
-    - anomaly-detection-network
-  environment:
-    - MLFLOW_TRACKING_URI=http://mlflow:5000
-    - MLFLOW_EXPERIMENT_NAME=isolation_forest_prod
-    - MODEL_NAME=if_anomaly_detector 
-    - PYTHONPATH=/training_service
-  volumes:
-    - ./data:/training_service/data
-    - ./models:/training_service/models
-    - ./logs:/training_service/logs
-    - ./outputs:/training_service/outputs
-  restart: on-failure
-  profiles: ["training"]
+    build:
+      context: .
+      dockerfile: services/training_service/Dockerfile
+    container_name: training_pipeline
+    depends_on:
+      - mlflow
+    networks:
+      - anomaly-detection-network
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_EXPERIMENT_NAME=isolation_forest_prod
+      - MODEL_NAME=if_anomaly_detector
+      - PYTHONPATH=/training_service
+    volumes:
+      - ./data:/training_service/data
+      - ./models:/training_service/models
+      - ./logs:/training_service/logs
+      - ./outputs:/training_service/outputs
+    restart: on-failure
+    profiles: ["training"]
+
+networks:
+  anomaly-detection-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  mlflow_data:

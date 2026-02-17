@@ -16,39 +16,37 @@ run_all_hi:
 create_datasets_2:
 	docker compose up --build create_datasets
 	
+#__________________________________________________________
 
-.PHONY: mlflow-up training-up all-up mlflow-down training-down all-down logs-mlflow logs-training
+.PHONY: build-mlflow build-training build-all \
+        mlflow-up training-up all-up \
+        mlflow-down training-down all-down
 
-# MLflow commands
+# ── BUILD ──────────────────────────────────────────────
+build-mlflow:
+	docker-compose -f compose.yaml build mlflow
+
+build-training:
+	docker-compose -f compose.yaml build training_pipeline
+
+# ── UP ─────────────────────────────────────────────────
 mlflow-up:
 	docker-compose -f compose.yaml up -d mlflow
 	@echo "Waiting for MLflow to be ready..."
-	@sleep 10
+	@ping -n 11 127.0.0.1 > nul
 
-mlflow-down:
-	docker-compose -f compose.yaml down
-
-# Training Pipeline commands
 training-up:
-	docker-compose -f compose.yaml up -d training_pipeline
+	docker-compose -f compose.yaml --profile training up training_pipeline
+
+all-up: mlflow-up training-up
+	@echo "MLflow e Training Pipeline avviati"
+
+# ── DOWN ───────────────────────────────────────────────
+mlflow-down:
+	docker-compose -f compose.yaml down mlflow
 
 training-down:
-	docker-compose -f compose.yaml down
+	docker-compose -f compose.yaml stop training_pipeline
 
-# Combined commands
-all-up: mlflow-up training-up
-	@echo "✅ MLflow and Training Pipeline are running"
-
-all-down:
-	docker-compose -f compose.yaml down -v
-	@echo "✅ All services stopped and volumes removed"
-
-# Logs commands
-logs-mlflow:
-	docker-compose -f compose.yaml logs -f mlflow
-
-logs-training:
-	docker-compose -f compose.yaml logs -f training_pipeline
-
-logs-all:
-	docker-compose -f compose.yaml logs -f
+all-down: mlflow-down training-down
+	@echo "Tutti i servizi fermati"

@@ -1,5 +1,5 @@
 project: anomaly_detection
-registry: /app/data/registry/registry.db
+registry: /training_service/data/registry/registry.db
 provider: local
 
 online_store:
@@ -9,6 +9,6 @@ online_store:
 
 offline_store:
   type: file
-  path: /app/data/offline_store
+  
 
 entity_key_serialization_version: 3
