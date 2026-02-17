@@ -24,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class HistoricalIngestionService:
+class FeatureEngineering:
     """Service for processing historical industrial washer data with rolling features"""
     
     def __init__(self, config_path: str):
@@ -589,7 +589,7 @@ def main():
     
     args = parser.parse_args()
     
-    service = HistoricalIngestionService(args.config)
+    service = FeatureEngineering(args.config)
     
     try:
         if args.dataset:
