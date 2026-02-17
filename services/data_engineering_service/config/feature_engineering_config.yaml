@@ -1,4 +1,4 @@
-# Feature Engineering Configuration for Historical Ingestion
+# Feature Engineering Configuration for Data Engineering 
 # This config defines:
 #   - rolling_features  → streaming pipeline (short-term rolling windows)
 #   - batch_features    → batch pipeline (daily / weekly aggregations)

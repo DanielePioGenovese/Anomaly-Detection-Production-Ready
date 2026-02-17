@@ -1,5 +1,5 @@
 """
-Historical Data Ingestion Service with Rolling Window Features
+Data Engineering Service with Rolling Window Features
 Processes industrial washer data with configurable rolling aggregations
 
 Pipeline architecture:
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class FeatureEngineering:
-    """Service for processing historical industrial washer data with rolling features"""
+    """Service for processing data engineering washer data with rolling features"""
     
     def __init__(self, config_path: str):
         """
@@ -48,7 +48,7 @@ class FeatureEngineering:
         """Create and configure Spark session"""
         logger.info("Creating Spark session")
         
-        builder = SparkSession.builder.appName("HistoricalIngestion_RollingFeatures")
+        builder = SparkSession.builder.appName("DataEngineering_RollingFeatures")
         
         # Apply Spark configurations from config
         if 'spark_config' in self.config:
@@ -545,7 +545,7 @@ class FeatureEngineering:
     
     def process_all_datasets(self):
         """Process all datasets defined in configuration"""
-        logger.info("Starting historical ingestion with rolling features")
+        logger.info("Starting data engineering with rolling features")
         logger.info(f"Total datasets to process: {len(self.config['datasets'])}")
         
         for dataset_config in self.config['datasets']:
@@ -558,7 +558,7 @@ class FeatureEngineering:
                 continue
         
         logger.info("=" * 80)
-        logger.info("Historical ingestion completed!")
+        logger.info("Data Engineering completed!")
         logger.info("=" * 80)
     
     def stop(self):
@@ -572,7 +572,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(
-        description='Historical Data Ingestion with Rolling Window Features'
+        description='Data Egnineering with Rolling Window Features'
     )
     parser.add_argument(
         '--config',
