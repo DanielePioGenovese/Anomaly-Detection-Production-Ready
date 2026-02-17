@@ -12,17 +12,24 @@ IMPORTANT: This version is configured for PySpark partitioned parquet files
 from feast import PushSource
 from feast.infra.offline_stores.file_source import FileSource
 
+### BATCH
 
-machines_batch = FileSource(
+machines_batch_source = FileSource(
     name="washing_batch_source",
-    path="/feature_store_service/data/offline/", 
+    path="/feature_store_service/data/offline/machines_batch_features", 
     timestamp_field='timestamp',
     description="Historical washing machine features stored in partitioned Parquet files"
 )
 
+### STREAMING
 
-stream_source = PushSource(
-    name="washing_stream_source",
-    batch_source=machines_batch,
+machines_stream_backing_source = FileSource(
+    name='machines_stream_backing_source',
+    path='/feature_store_service/data/offline/machines_stream_source/streaming_feature_backfill.parquet',
+)
+
+machines_stream_source = PushSource(
+    name="washing_stream_push",
+    batch_source=machines_stream_backing_source,
     description="Push source for real-time features from Redpanda"
 )

@@ -14,12 +14,12 @@
 - [Quick Start](#-quick-start)
 - [Project Structure](#-project-structure)
 - [Feature Definitions](#-feature-definitions)
-- [Additional resources](#-additional-resources)
+- [Additional Resources](#-additional-resources)
 
 
 ## 🎯 Overview
 
-The Feast Feature Store service provides a production-grade feature serving layer for real-time anomaly detection in industrial washing machines. It manages 11 sensor and engineered features across multiple machines, enabling:
+The Feast Feature Store service provides a production-grade feature serving layer for real-time anomaly detection in industrial washing machines. It manages **15 features** across two feature views per machine, enabling:
 
 - **Real-time inference** with sub-100ms latency
 - **Point-in-time correct** historical features for training
@@ -28,7 +28,8 @@ The Feast Feature Store service provides a production-grade feature serving laye
 
 ### Key Features
 
-- ✅ **11 sensor features** per washing machine
+- ✅ **13 streaming features** (raw sensors + rolling-window aggregations)
+- ✅ **2 batch features** (daily / weekly long-horizon aggregations)
 - ✅ **Online store** (Redis) for real-time serving
 - ✅ **Offline store** (Parquet) for training data
 - ✅ **HTTP API** for easy integration
@@ -61,13 +62,14 @@ The Feast Feature Store service provides a production-grade feature serving laye
 │    │                     │   │                     │           │
 │    │  • Sub-100ms reads  │   │  • Training data    │           │
 │    │  • Real-time serve  │   │  • Point-in-time    │           │
-│    │  • TTL: 24 hours    │   │  • TTL: 365 days    │           │
+│    │  • TTL: 12h (stream)│   │  • Historical data  │           │
+│    │  • TTL: 7d (batch)  │   │                     │           │
 │    └─────────────────────┘   └─────────────────────┘           │
 │                                                                │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │  Registry (SQLite)                                      │   │
 │  │  • Entity: machine (Machine_ID: Int64)                  │   │
-│  │  • Feature Views: stream (24h), batch (365d)            │   │
+│  │  • Feature Views: stream (12h TTL), batch (7d TTL)      │   │
 │  │  • Feature Service: machine_anomaly_service_v1          │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────────┘
@@ -98,7 +100,7 @@ make run_feature_store
 ### 2. TEST with POSTMAN (First Time Only)
 
 ```bash
-IMPORT FILE WITH POSTMAAN 
+IMPORT FILE WITH POSTMAN
 ```
 
 ------> [FILE](\Feast_API_Tests.postman_collection.json)
@@ -127,8 +129,7 @@ feature_store_service/
 # Generated at runtime:
 data/
 ├── registry/
-    └── registry.db                 
-
+    └── registry.db
 ```
 
 
@@ -141,37 +142,59 @@ data/
 |-------|------|-------------|
 | `Machine_ID` | Int64 | Unique identifier for each washing machine |
 
+---
+
 ### Feature Views
 
-#### machine_stream_features (Real-time)
+#### machine_streaming_features (Real-time)
 
-**TTL:** 24 hours  
-**Source:** Push (streaming)  
-**Use:** Online inference
+**TTL:** 12 hours  
+**Source:** `washing_stream_push` (PushSource → backed by `washing_batch_source` for history)  
+**Use:** Online inference, real-time anomaly detection
 
-| Feature | Type | Description | Unit |
-|---------|------|-------------|------|
-| `Cycle_Phase_ID` | Int64 | Current cycle phase (1-4) | - |
-| `Current_L1` | Float32 | Phase L1 current | Amps |
-| `Current_L2` | Float32 | Phase L2 current | Amps |
-| `Current_L3` | Float32 | Phase L3 current | Amps |
-| `Voltage_L_L` | Float32 | Line-to-line voltage | Volts |
-| `Water_Temp_C` | Float32 | Water temperature | Celsius |
-| `Motor_RPM` | Float32 | Motor speed | RPM |
-| `Water_Flow_L_min` | Float32 | Water flow rate | L/min |
-| `Vibration_mm_s` | Float32 | Current vibration | mm/s |
-| `Water_Pressure_Bar` | Float32 | Water pressure | Bar |
-| `Vibration_RollingMax_10min` | Float32 | Max vibration (10min window) | mm/s |
+| Feature | Type | Source | Description | Unit |
+|---------|------|--------|-------------|------|
+| `Cycle_Phase_ID` | Int64 | Raw sensor | Current wash cycle phase (1–4) | — |
+| `Current_L1` | Float32 | Raw sensor | Phase L1 current draw | Amps |
+| `Current_L2` | Float32 | Raw sensor | Phase L2 current draw | Amps |
+| `Current_L3` | Float32 | Raw sensor | Phase L3 current draw | Amps |
+| `Voltage_L_L` | Float32 | Raw sensor | Line-to-line voltage | Volts |
+| `Water_Temp_C` | Float32 | Raw sensor | Water temperature | °C |
+| `Motor_RPM` | Float32 | Raw sensor | Motor speed | RPM |
+| `Water_Flow_L_min` | Float32 | Raw sensor | Water flow rate | L/min |
+| `Vibration_mm_s` | Float32 | Raw sensor | Instantaneous vibration level | mm/s |
+| `Water_Pressure_Bar` | Float32 | Raw sensor | Water pressure | Bar |
+| `Current_Imbalance_Ratio` | Float32 | Streaming pipeline | `(max(L1,L2,L3) − min) / mean` — instantaneous 3-phase imbalance scalar | — |
+| `Vibration_RollingMax_10min` | Float32 | Streaming pipeline | 10-minute rolling maximum of `Vibration_mm_s` per machine | mm/s |
+| `Current_Imbalance_RollingMean_5min` | Float32 | Streaming pipeline | 5-minute rolling mean of `Current_Imbalance_Ratio` per machine | — |
 
-#### machines_batch_features (Historical)
+---
 
-**TTL:** 365 days  
-**Source:** Parquet files  
-**Use:** Training data
+#### machine_batch_features (Historical Aggregations)
 
-Same 11 features as above, but loaded from historical data files.
+**TTL:** 7 days  
+**Source:** `washing_batch_source` (FileSource → partitioned Parquet written by PySpark)  
+**Use:** Training data, long-horizon deterioration signals
 
+| Feature | Type | Aggregation window | Description | Unit |
+|---------|------|--------------------|-------------|------|
+| `Daily_Vibration_PeakMean_Ratio` | Float32 | Per machine, per calendar day | `max(Vibration_mm_s) / mean(Vibration_mm_s)` — high ratio signals repeated shock events and mechanical deterioration | — |
+| `Weekly_Current_StdDev` | Float32 | Per machine, per week | Standard deviation of `Current_L1` over the week — grows as motor insulation degrades or mechanical resistance increases | Amps |
 
+---
+
+### Feature Service
+
+#### machine_anomaly_service_v1
+
+Combines both feature views into a single versioned contract for the anomaly detection model. A single entity-row lookup on `Machine_ID` returns the full 15-feature vector at inference time.
+
+| Included view | Features | TTL |
+|---------------|----------|-----|
+| `machine_streaming_features` | 13 (raw sensors + rolling windows) | 12 hours |
+| `machine_batch_features` | 2 (daily / weekly aggregations) | 7 days |
+
+---
 
 ## 📚 Additional Resources
 

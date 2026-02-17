@@ -19,14 +19,8 @@ data_engineering_service/
 ## Quick Start
 
 ```bash
-# Run against all datasets defined in the config
-python src/data_engineering.py
-
-# Run against a specific dataset by name
-python src/data_engineering.py --dataset industrial_washer_with_anomalies
-
-# Point to a custom config file
-python src/data_engineering.py --config path/to/your/config.yaml
+# Run data engineering
+make data_engineering
 ```
 
 **Default config path** (used when `--config` is omitted):

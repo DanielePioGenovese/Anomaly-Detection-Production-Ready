@@ -10,13 +10,13 @@ and registered by `feast apply`.
 from src.entity import machine
 
 # Import data sources
-from src.data_sources import machines_batch, stream_source
+from src.data_sources import machines_batch_source, machines_stream_source
 
 # Import feature views
-from src.features import machine_features
+from src.features import machine_streaming_features, machine_batch_features
 
 # Import feature services
-from src.feature_services import machine_feature_service_v1
+from src.feature_services import machine_anomaly_service_v1
 
 # Expose all objects for feast apply to discover
 __all__ = [
@@ -24,13 +24,13 @@ __all__ = [
     'machine',
     
     # Data Sources
-    'machines_batch',
-    'stream_source',
+    'machines_batch_source',
+    'machines_stream_source',
     
     # Feature Views
-    'machine_stream_features',
-    'machines_batch_features',
+    'machine_streaming_features',
+    'machine_batch_features',
     
     # Feature Services
-    'machine_feature_service_v1'
+    'machine_anomaly_service_v1'
 ]

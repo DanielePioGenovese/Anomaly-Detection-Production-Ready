@@ -25,7 +25,7 @@ spark = SparkSession.builder \
 print("Generating datasets...")
 normal_df, anomaly_df = generate_industrial_washer_datasets(
     spark=spark,
-    num_rows=1_000_000,
+    num_rows=6_000_000,
     anomaly_rate=0.02
 )
 
