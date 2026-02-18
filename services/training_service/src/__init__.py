@@ -10,10 +10,12 @@ from .train import TrainingPipeline
 from .model import IsolationForestModel
 from .dataloader import DataLoader
 from .metrics import MetricsCalculator
+from .preprocessor import Preprocessor
 
 __all__ = [
     'TrainingPipeline',
     'IsolationForestModel',
     'DataLoader',
     'MetricsCalculator',
+    'Preprocessor',
 ]

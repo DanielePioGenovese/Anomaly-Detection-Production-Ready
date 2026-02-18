@@ -5,7 +5,7 @@ Feature Services provide a convenient way to group features for specific use cas
 They act as a contract between feature producers and consumers (ML models).
 """
 
-from feast import FeatureService 
+from feast import FeatureService
 from features import machine_view
 
 # ============================================================================

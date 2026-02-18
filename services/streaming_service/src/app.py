@@ -10,6 +10,7 @@ logger = logging.getLogger("StreamingService")
 
 from feast import FeatureStore
 import os
+import preprocessor # Required for joblib loading
 
 def run_streaming_service():
     """
@@ -43,8 +44,8 @@ def run_streaming_service():
 
     app = Application(
         broker_address=Config.KAFKA_SERVER,
-        consumer_group="quix-streaming-processor-v1",
-        auto_offset_reset="latest"
+        consumer_group="quix-streaming-processor-v2",
+        auto_offset_reset="earliest"
     )
 
     input_topic = app.topic(Config.TOPIC_TELEMETRY, value_deserializer="json")
@@ -58,10 +59,11 @@ def run_streaming_service():
             # Metadata
             machine_id = data.get("Machine_ID", "Unknown")
             timestamp_str = data.get("timestamp", "Unknown")
-            
+
+
             # Simple simulation of "complex" real-time metric
             vibration = data.get("Vibration_mm_s", 0)
-            data["Vibration_rollingMax_10min"] = vibration * 1.05 # Aggregation placeholder
+            data["Vibration_RollingMax_10min"] = vibration * 1.05 # Aggregation placeholder
             
             # Prepare for AI: Convert to DataFrame for the preprocessor
             df_row = pd.DataFrame([data])

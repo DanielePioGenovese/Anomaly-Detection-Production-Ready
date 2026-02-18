@@ -16,9 +16,9 @@ def load_historical_features():
     store = FeatureStore(repo_path=repo_path)
     
     # Path to historical processed data
-    # This should match where hist_ingestion writes its output
+    # hist_ingestion writes Spark partitioned parquet to this directory
     data_dir = os.getenv("DATA_DIR", "/app/data")
-    data_path = Path(data_dir) / "processed_datasets/washing_features_batch.parquet"
+    data_path = Path(data_dir) / "processed_datasets" / "industrial_washer_normal_features"
     
     if not data_path.exists():
         logger.error(f"Historical data not found at {data_path}")

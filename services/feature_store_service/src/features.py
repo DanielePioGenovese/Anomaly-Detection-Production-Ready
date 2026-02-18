@@ -87,7 +87,7 @@ machine_view = FeatureView(
         # ENGINEERED FEATURES - Vibration Aggregates
         # ====================================================================
         Field(
-            name="Vibration_rollingMax_10min", 
+            name="Vibration_RollingMax_10min", 
             dtype=Float32,
             description="Rolling maximum vibration over last 10 minutes (engineered feature)"
         ),

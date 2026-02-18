@@ -5,8 +5,7 @@ This module defines both batch (offline) and streaming data sources
 for the washing machine anomaly detection system.
 """
 
-from feast import PushSource
-from feast.infra.offline_store.file_source import FileSource
+from feast import FileSource, PushSource
 
 # ============================================================================
 # BATCH DATA SOURCE (Historical Data)
@@ -15,7 +14,7 @@ from feast.infra.offline_store.file_source import FileSource
 # These files contain historical features for training and batch scoring
 batch_source = FileSource(
     name='washing_batch_source',
-    path='/app/data/offline/washing_features_batch.parquet',  # Historical features
+    path='/app/data/processed_datasets/industrial_washer_normal_features/',
     timestamp_field='timestamp',
     description='Batch source for historical washing machine features'
 )
