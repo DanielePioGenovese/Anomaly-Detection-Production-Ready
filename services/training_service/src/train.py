@@ -2,11 +2,11 @@
 Training pipeline for Isolation Forest anomaly detection model.
 
 This module orchestrates the complete training workflow:
-1. Load preprocessor artifact (created by Historical Ingestion Service)
-2. Load and preprocess training data
-3. Train Isolation Forest model
+1. Load processed training data (from Historical Ingestion Service)
+2. Fit a StandardScaler preprocessor on training data
+3. Train Isolation Forest model on scaled features
 4. Evaluate on test data
-5. Save model artifacts and metrics
+5. Save all artifacts (model + preprocessor + metrics)
 """
 import logging
 import sys
@@ -14,11 +14,18 @@ from pathlib import Path
 from typing import Optional, Tuple
 import pandas as pd
 import joblib
+import mlflow
+import mlflow.sklearn
+import os
+
+# Configurazione base MLflow
+mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
 
 from config import config
 from dataloader import DataLoader
 from model import IsolationForestModel
 from metrics import MetricsCalculator
+from preprocessor import Preprocessor
 from validation import ConfigValidator
 
 
@@ -61,7 +68,8 @@ class TrainingPipeline:
     
     def __init__(
         self,
-        data_dir: Path = config.RAW_DATA_DIR,
+        train_data_dir: Path = config.TRAIN_DATA_DIR,
+        test_data_dir: Path = config.TEST_DATA_DIR,
         models_dir: Path = config.MODELS_DIR,
         metrics_dir: Path = config.METRICS_DIR
     ):
@@ -69,31 +77,35 @@ class TrainingPipeline:
         Initialize the training pipeline.
         
         Args:
-            data_dir: Directory containing raw data files
+            train_data_dir: Directory containing training data (normal operations)
+            test_data_dir: Directory containing test data (with anomalies)
             models_dir: Directory for model artifacts
             metrics_dir: Directory for metrics output
         """
-        self.data_dir = Path(data_dir)
+        self.train_data_dir = Path(train_data_dir)
+        self.test_data_dir = Path(test_data_dir)
         self.models_dir = Path(models_dir)
         self.metrics_dir = Path(metrics_dir)
         
-        # Initialize components
-        self.data_loader = DataLoader(self.data_dir)
+        # Initialize components — separate loaders for train and test
+        self.train_loader = DataLoader(self.train_data_dir)
+        self.test_loader = DataLoader(self.test_data_dir)
         self.preprocessor = None
         self.model = None
         self.metrics_calculator = MetricsCalculator()
         
-        # Validator for paths
+        # Validator for the training data directory
         self.validator = ConfigValidator(
-            data_dir=self.data_dir,
+            data_dir=self.train_data_dir,
             model_dir=self.models_dir,
             metrics_dir=self.metrics_dir
         )
         
         logger.info("TrainingPipeline initialized")
-        logger.info(f"  Data directory: {self.data_dir}")
-        logger.info(f"  Models directory: {self.models_dir}")
-        logger.info(f"  Metrics directory: {self.metrics_dir}")
+        logger.info(f"  Train data: {self.train_data_dir}")
+        logger.info(f"  Test data:  {self.test_data_dir}")
+        logger.info(f"  Models:     {self.models_dir}")
+        logger.info(f"  Metrics:    {self.metrics_dir}")
 
     def validate_configuration(self) -> bool:
         """
@@ -115,45 +127,28 @@ class TrainingPipeline:
         logger.info("✓ Configuration validation successful")
         return True
 
-    def load_preprocessor(self, preprocessor_path: Optional[Path] = None) -> None:
+    def fit_preprocessor(self, df_train: pd.DataFrame) -> None:
         """
-        Load the preprocessor artifact created by Historical Ingestion Service.
-        
+        Create and fit a StandardScaler preprocessor on training data.
+
+        The fitted preprocessor is saved as an artifact so the streaming
+        service can apply the exact same scaling at inference time.
+
         Args:
-            preprocessor_path: Path to preprocessor artifact. If None, uses default.
-        
-        Raises:
-            FileNotFoundError: If preprocessor artifact doesn't exist
+            df_train: Raw training DataFrame (including label/meta columns).
         """
-        if preprocessor_path is None:
-            preprocessor_path = self.models_dir / config.PREPROCESSOR_ARTIFACT
-        
-        preprocessor_path = Path(preprocessor_path)
-        
-        if not preprocessor_path.exists():
-            raise FileNotFoundError(
-                f"Preprocessor artifact not found: {preprocessor_path}. "
-                f"Make sure the Historical Ingestion Service has run successfully."
-            )
-        
-        logger.info(f"Loading preprocessor from: {preprocessor_path}")
-        
-        try:
-            self.preprocessor = joblib.load(preprocessor_path)
-            logger.info("✓ Preprocessor loaded successfully")
-            
-            # Log preprocessor info
-            if hasattr(self.preprocessor, 'feature_columns'):
-                logger.info(
-                    f"  Preprocessor expects {len(self.preprocessor.feature_columns)} features"
-                )
-            
-        except Exception as e:
-            logger.error(f"Error loading preprocessor: {e}")
-            raise
+        logger.info("Fitting preprocessor on training data...")
+
+        self.preprocessor = Preprocessor()
+        self.preprocessor.fit(df_train)
+
+        logger.info(
+            f"✓ Preprocessor fitted on {len(self.preprocessor.feature_columns)} features"
+        )
 
     def load_and_preprocess_data(
         self,
+        data_loader: DataLoader,
         file_pattern: str,
         dataset_name: str = "data"
     ) -> Tuple[pd.DataFrame, Optional[pd.Series]]:
@@ -161,6 +156,7 @@ class TrainingPipeline:
         Load raw data and apply preprocessing.
         
         Args:
+            data_loader: DataLoader instance pointing to the right directory
             file_pattern: Glob pattern for files to load
             dataset_name: Name of dataset (for logging)
         
@@ -172,7 +168,7 @@ class TrainingPipeline:
         logger.info(f"Loading {dataset_name} data...")
         
         # Load raw data
-        df_raw = self.data_loader.load_data(file_pattern)
+        df_raw = data_loader.load_data(file_pattern)
         logger.info(f"  Loaded {len(df_raw)} samples")
         
         # Extract labels if present
@@ -185,22 +181,16 @@ class TrainingPipeline:
         
         # Apply preprocessing using the fitted preprocessor
         logger.info(f"Applying preprocessing to {dataset_name}...")
-        
+
         if self.preprocessor is None:
             raise RuntimeError(
-                "Preprocessor not loaded. Call load_preprocessor() first."
+                "Preprocessor not fitted. Call fit_preprocessor() first."
             )
-        
-        try:
-            # Use the transform method (fit=False)
-            X = self.preprocessor.preprocess_data(df_raw, fit=False)
-            logger.info(f"✓ Preprocessing complete: {X.shape[1]} features")
-            
-            return X, y
-            
-        except Exception as e:
-            logger.error(f"Error during preprocessing: {e}")
-            raise
+
+        X = self.preprocessor.preprocess_data(df_raw, fit=False)
+        logger.info(f"✓ Preprocessing complete: {X.shape[1]} features")
+
+        return X, y
 
     def train_model(
         self,
@@ -317,24 +307,29 @@ class TrainingPipeline:
         logger.info(f"✓ Predictions saved to: {predictions_path}")
 
     def save_artifacts(self) -> None:
-        """Save all training artifacts (model and metrics)."""
+        """Save all training artifacts (model, preprocessor, and metrics)."""
         logger.info("=" * 80)
         logger.info("SAVING ARTIFACTS")
         logger.info("=" * 80)
-        
+
         if self.model is None or not self.model.is_trained:
             raise RuntimeError("Model must be trained before saving")
-        
+
         # Save model
         model_path = self.models_dir / config.MODEL_ARTIFACT
         self.model.save_model(model_path)
         logger.info(f"✓ Model saved to: {model_path}")
-        
+
+        # Save preprocessor (needed by the streaming service for real-time inference)
+        preprocessor_path = self.models_dir / config.PREPROCESSOR_ARTIFACT
+        self.preprocessor.save(preprocessor_path)
+        logger.info(f"✓ Preprocessor saved to: {preprocessor_path}")
+
         # Save metrics
         metrics_path = self.metrics_dir / config.METRICS_ARTIFACT
         self.metrics_calculator.save_metrics(metrics_path)
         logger.info(f"✓ Metrics saved to: {metrics_path}")
-        
+
         logger.info("✓ All artifacts saved successfully")
 
     def run(
@@ -362,37 +357,70 @@ class TrainingPipeline:
             # Step 1: Validate configuration
             if not self.validate_configuration():
                 raise RuntimeError("Configuration validation failed")
-            
-            # Step 2: Load preprocessor (created by Historical Ingestion Service)
-            self.load_preprocessor()
-            
-            # Step 3: Load and preprocess training data
+
+            # Initialize MLflow
+            try:
+                mlflow.set_tracking_uri("http://mlflow:5000")
+                mlflow.set_experiment("washing_machines_anomaly")
+            except Exception as e:
+                 logger.warning(f"Could not connect to MLflow: {e}")
+
+            # Step 2: Load raw training data
             logger.info("=" * 80)
             logger.info("LOADING TRAINING DATA")
             logger.info("=" * 80)
-            X_train, _ = self.load_and_preprocess_data(
-                file_pattern=train_pattern,
-                dataset_name="training"
-            )
-            
-            # Step 4: Train model
-            self.train_model(X_train, model_params)
-            
-            # Step 5: Load and preprocess test data
-            logger.info("=" * 80)
-            logger.info("LOADING TEST DATA")
-            logger.info("=" * 80)
-            X_test, y_test = self.load_and_preprocess_data(
-                file_pattern=test_pattern,
-                dataset_name="test"
-            )
-            
-            # Step 6: Evaluate model
-            metrics = self.evaluate_model(X_test, y_test)
-            
-            # Step 7: Save artifacts
-            self.save_artifacts()
-            
+            df_train = self.train_loader.load_data(train_pattern)
+            logger.info(f"  Loaded {len(df_train)} training samples")
+
+            # Start MLflow Run
+            with mlflow.start_run() as run:
+                # Log parameters
+                if model_params:
+                    mlflow.log_params(model_params)
+                else:
+                    mlflow.log_params(config.ISOLATION_FOREST_PARAMS)
+
+                # Step 3: Fit preprocessor on training data
+                self.fit_preprocessor(df_train)
+
+                # Step 4: Apply preprocessing to training data
+                X_train, _ = self.load_and_preprocess_data(
+                    data_loader=self.train_loader,
+                    file_pattern=train_pattern,
+                    dataset_name="training"
+                )
+
+                # Step 5: Train model
+                self.train_model(X_train, model_params)
+                
+                # Log model to MLflow (and register it)
+                mlflow.sklearn.log_model(
+                    self.model.model, 
+                    "model",
+                    registered_model_name="AnomalyForest"
+                )
+
+                # Step 6: Load and preprocess test data
+                logger.info("=" * 80)
+                logger.info("LOADING TEST DATA")
+                logger.info("=" * 80)
+                X_test, y_test = self.load_and_preprocess_data(
+                    data_loader=self.test_loader,
+                    file_pattern=test_pattern,
+                    dataset_name="test"
+                )
+
+                # Step 7: Evaluate model
+                metrics = self.evaluate_model(X_test, y_test)
+                
+                # Log metrics to MLflow
+                mlflow.log_metrics(metrics)
+
+                # Step 8: Save artifacts (model + preprocessor + metrics)
+                self.save_artifacts()
+                # Also log preprocessor as artifact to MLflow for completeness
+                mlflow.log_artifact(str(self.models_dir / config.PREPROCESSOR_ARTIFACT), artifact_path="preprocessor")
+
             logger.info("=" * 80)
             logger.info("✓ TRAINING PIPELINE COMPLETED SUCCESSFULLY")
             logger.info("=" * 80)
