@@ -24,6 +24,7 @@ historical_data/
 streaming_data/
 processed_datasets/
 synthetic_datasets/
+data/offline
 
 # Kafka
 kafka_storage/
@@ -63,3 +64,4 @@ data/pyspark_metadata
 
 # Feature Store
 data/registry
+
