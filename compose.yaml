@@ -51,7 +51,7 @@ services:
 
   # Historical Data Ingestion & Feature Engineering Service
   hist_ingestion:
-    build: 
+    build:
       context: .
       dockerfile: services/historical_ingestion_service/Dockerfile
     container_name: historical_ingestion_service
@@ -72,57 +72,10 @@ services:
     networks:
       - anomaly-detection-network
     # More memory to use PySpark
-    shm_size: '2gb' 
+    shm_size: '2gb'
     # Job should run once and exit
     restart: "no"
 
-#   training:
-#     build:
-#       context: .
-#       dockerfile: services/training_service/Dockerfile
-#     container_name: training_service
-#     environment:
-#       - PYTHONUNBUFFERED=1
-#       - LOG_LEVEL=INFO
-#       - DATA_DIR=/training/data
-#       - MODELS_DIR=/training/models
-#       - METRICS_DIR=/training/metrics
-#     volumes:
-#       - ./data:/training/data
-#       - ./models:/training/models
-#       - ./metrics:/training/metrics
-#       - ./logs/training:/training/logs
-#       - ./services/training_service/config:/training/config
-#     depends_on:
-#       hist_ingestion:
-#         condition: service_completed_successfully
-#     networks:
-#       - anomaly-detection-network
-#     restart: "no"
-
-#   # ingestion:
-#   #   build:
-#   #     context: .
-#   #     dockerfile: services/ingestion_service/Dockerfile
-#   #   container_name: ingestion_service
-#   #   ports:
-#   #     - '9090:9090'
-#   #   environment:
-#   #     - PYTHONUNBUFFERED=1
-#   #     - KAFKA_BROKER=redpanda:9092
-#   #   volumes:
-#   #     - ./models:/ingestion/models
-#   #     - ./config:/ingestion/config
-#   #     - ./logs/ingestion:/ingestion/logs
-#   #   depends_on:
-#   #     redpanda:
-#   #       condition: service_healthy
-#   #     training:
-#   #       condition: service_completed_successfully
-#   #   networks:
-#   #     - anomaly-detection-network
-
-  
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -140,33 +93,36 @@ services:
     networks:
       - anomaly-detection-network
 
-    
-# Feast configuration to use Redis
+  # ============================================================================
+  # FEAST APPLY - Register Feature Definitions (Run Once)
+  # ============================================================================
   feature_store_apply:
-    build:                  
-      context: .            
-      dockerfile: services/feature_store_service/Dockerfile 
-    container_name: feature_store_apply  
-    depends_on:                         
+    build:
+      context: .
+      dockerfile: services/feature_store_service/Dockerfile
+    container_name: feature_store_apply
+    command: ["uv", "run", "feast", "apply"]
+    depends_on:
       redis:
         condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
     volumes:
-      # Shared registry (must persist)
-      - ./data/registry:/app/data/registry
-      # Offline store data
-      - ./data/offline:/app/data/offline
+      - ./data/registry:/feature_store_service/data/registry
+      - ./data/offline:/feature_store_service/data/offline
     networks:
       - anomaly-detection-network
     restart: 'no'  # Run once only
 
-  
+  # ============================================================================
+  # FEAST FEATURE SERVER - Serve Features via HTTP API
+  # ============================================================================
   feature_store_service:
-    build: 
+    build:
       context: .
       dockerfile: services/feature_store_service/Dockerfile
     container_name: feature_store_service
+    command: ["uv", "run", "feast", "serve", "--host", "0.0.0.0", "--port", "6566"]
     depends_on:
       redis:
         condition: service_healthy
@@ -174,22 +130,15 @@ services:
         condition: service_completed_successfully
     environment:
       - PYTHONUNBUFFERED=1
-      - FEAST_REPO_PATH=/app
+      - FEAST_REPO_PATH=/feature_store_service/config
     volumes:
-      # Read-only access to registry
-      - ./data/registry:/app/data/registry:ro
-      # Read-only access to offline data
-      - ./data/offline:/app/data/offline:ro
+      - ./data/registry:/feature_store_service/data/registry
+      - ./data/offline:/feature_store_service/data/offline
     ports:
-      - '8001:8000'  # Changed from 8080 to avoid conflict with redpanda-console
+      - "6566:6566"
     networks:
       - anomaly-detection-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
 
   create_datasets:
     build:
@@ -229,7 +178,7 @@ services:
       - --artifacts-destination
       - /mlflow/artifacts
       - --allowed-hosts
-      - "localhost:*,127.0.0.1:*,mlflow:5000"
+      - "*"
     ports:
       - "5000:5000"
     volumes:
@@ -244,6 +193,9 @@ services:
       start_period: 5s
       retries: 3
 
+  # ============================================================================
+  # TRAINING PIPELINE - Run Once (or manually on schedule)
+  # ============================================================================
   training_pipeline:
     build:
       context: .
@@ -263,6 +215,8 @@ services:
       - PYTHONPATH=/training_service
       - PYTHONUNBUFFERED=1
     volumes:
+      - ./data/registry:/feature_store_service/data/registry
+      - ./data/offline:/feature_store_service/data/offline
       - ./data:/training_service/data
       - ./models:/training_service/models
       - ./logs:/training_service/logs
