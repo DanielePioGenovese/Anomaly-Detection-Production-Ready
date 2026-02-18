@@ -26,6 +26,7 @@ machines_batch_source = FileSource(
 machines_stream_backing_source = FileSource(
     name='machines_stream_backing_source',
     path='/feature_store_service/data/offline/machines_stream_source/streaming_feature_backfill.parquet',
+    timestamp_field='timestamp'
 )
 
 machines_stream_source = PushSource(
