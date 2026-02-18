@@ -62,7 +62,3 @@ run_feature_store:
 	docker compose up --build --abort-on-container-exit feature_store_apply
 	docker compose up --build -d feature_store_service
 	docker compose logs feature_store_service
-
-test_feature_store: 
-	docker compose run --rm feature_store_service uv run -m src.test_functionality
-
