@@ -1,5 +1,5 @@
 project: anomaly_detection
-registry: /feature_store_service/data/registry/registry.db
+registry: /data/registry/registry.db
 provider: local
 
 online_store:
@@ -9,6 +9,5 @@ online_store:
 
 offline_store:
   type: file
-  
 
 entity_key_serialization_version: 3
