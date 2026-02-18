@@ -31,8 +31,8 @@ from datetime import timedelta
 from feast import FeatureView, Field
 from feast.types import Float32, Int64
 
-from src import machine
-from src import machines_batch_source, machines_stream_source
+from entity import machine
+from data_sources import machines_batch_source, machines_stream_source
 
 
 # ==============================================================================

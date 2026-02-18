@@ -17,7 +17,7 @@ Service v1 — machine_anomaly_service_v1
 
 from feast import FeatureService
 
-from src import machine_streaming_features, machine_batch_features
+from features import machine_streaming_features, machine_batch_features
 
 
 # ==============================================================================

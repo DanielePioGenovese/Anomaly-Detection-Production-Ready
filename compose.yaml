@@ -85,7 +85,7 @@ services:
     volumes:
       - ./data/registry:/data/registry
       - ./data/offline:/data/offline
-      - ./services/feature_store_service:/feature_store_service:ro
+      - ./services/feature_store_service/src:/feature_store_service/src:ro
     networks:
       - anomaly-detection-network
     command: ["uv", "run", "feast", "apply"]
@@ -110,7 +110,7 @@ services:
     volumes:
       - ./data/registry:/data/registry
       - ./data/offline:/data/offline
-      - ./services/feature_store_service:/feature_store_service:ro
+      - ./services/feature_store_service/src:/feature_store_service/src:ro
     ports:
       - "6566:6566"
     networks:
