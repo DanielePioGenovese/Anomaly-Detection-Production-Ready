@@ -13,8 +13,8 @@ WORKDIR /feature_store_service
 # Install C++ build tools (build-essential) required for compiling certain Python libraries (e.g., Pandas, Feast).
 # Clean up apt cache afterwards to minimize image size.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential \
- && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency definition files to the working directory
 COPY pyproject.toml uv.lock ./
@@ -25,9 +25,13 @@ RUN uv sync --frozen --no-dev --group feature_store_apply
 COPY services/feature_store_service/src ./src/
 COPY services/feature_store_service/config/feature_store.yaml ./feature_store.yaml
 
-RUN mkdir -p /feature_store_service/data/registry /feature_store_service/data/offline
+RUN mkdir -p /feature_store_service/data/registry /feature_store_service/data/processed_datasets
 
 # Feast commands must be run from here to correctly identify the repository configuration.
 WORKDIR /feature_store_service
+
+# src/ is on PYTHONPATH so bare imports (from entity import ...) work
+# when Feast scans src/ via importlib
+ENV PYTHONPATH="/feature_store_service/src:$PYTHONPATH"
 
 CMD ["uv", "run", "feast", "apply"]

@@ -21,5 +21,6 @@ COPY services/feature_store_service/config/feature_store.yaml ./feature_store.ya
 
 ENV PYTHONPATH="/feature_loader_service"
 ENV FEAST_REPO_PATH="/feature_loader_service"
+ENV PATH="/feature_loader_service/.venv/bin:$PATH"
 
 CMD ["python", "src/loader.py"]

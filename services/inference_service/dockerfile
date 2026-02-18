@@ -1,0 +1,25 @@
+FROM python:3.10-slim
+
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+WORKDIR /inference_service
+
+# Install dependencies FIRST (caching layer)
+# Copy service-specific pyproject.toml
+COPY services/inference_service/pyproject.toml .
+# No lock file yet, so perform sync without frozen
+RUN uv sync
+
+# Copy application code using paths relative to build context (project root)
+COPY services/inference_service/src/ src/
+COPY services/inference_service/config/ config/
+
+
+# Set Environment for imports
+# Add /inference_service (for config) and /inference_service/src (for preprocessor) to PYTHONPATH
+ENV PYTHONPATH="/inference_service:/inference_service/src:$PYTHONPATH"
+ENV PATH="/inference_service/.venv/bin:$PATH"
+
+# Default Command
+CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
