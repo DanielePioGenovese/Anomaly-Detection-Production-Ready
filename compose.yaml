@@ -124,7 +124,7 @@ services:
   create_datasets:
     build:
       context: .
-      dockerfile: services/Dockerfile.spark_services 
+      dockerfile: services/dockerfile.spark_services 
     container_name: create_datasets
     command: ["-m", "services.create_datasets_service.src.example_usage"]
     environment:
@@ -144,7 +144,7 @@ services:
   data_engineering:
     build: 
       context: .
-      dockerfile: services/Dockerfile.spark_services
+      dockerfile: services/dockerfile.spark_services
     container_name: data_engineering_service
     depends_on:
       create_datasets:
