@@ -74,11 +74,11 @@ run_all: final_datasets run_feature_store
 # ----------------------------------------------
 build_mlflow:
 	@echo "Building MLflow..."
-	docker compose build mlflow
+	docker compose up --build mlflow
 
 build_training:
 	@echo "Building Training Pipeline..."
-	docker compose build training_pipeline
+	docker compose up --build training_pipeline
 
 build_all: build_mlflow build_training
 	@echo "All ML and Training services built."

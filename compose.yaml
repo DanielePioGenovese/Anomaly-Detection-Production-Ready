@@ -187,6 +187,71 @@ services:
       - anomaly-detection-network
     restart: 'no'
 
+  mlflow:
+    build:
+      context: .
+      dockerfile: services/mlflow/Dockerfile
+    container_name: mlflow
+    command:
+      - uv
+      - run
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --backend-store-uri
+      - sqlite:////mlflow/mlflow.db
+      - --artifacts-destination
+      - /mlflow/artifacts
+      - --allowed-hosts
+      - "*"
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlruns
+    restart: unless-stopped
+    networks:
+      - anomaly-detection-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 30s
+      timeout: 10s
+      start_period: 5s
+      retries: 3
+
+  # ============================================================================
+  # TRAINING PIPELINE - Run Once (or manually on schedule)
+  # ============================================================================
+  training_pipeline:
+    build:
+      context: .
+      dockerfile: services/training_service/Dockerfile
+    container_name: training_pipeline
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      feature_store_apply:
+        condition: service_completed_successfully
+    networks:
+      - anomaly-detection-network
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_EXPERIMENT_NAME=isolation_forest_prod
+      - MODEL_NAME=if_anomaly_detector
+      - PYTHONPATH=/training_service
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data/registry:/feature_store_service/data/registry
+      - ./data/offline:/feature_store_service/data/offline
+      - ./data:/training_service/data
+      - ./models:/training_service/models
+      - ./logs:/training_service/logs
+      - ./outputs:/training_service/outputs
+      - ./services/feature_store_service/config:/training_service/services/feature_store_service/config:ro
+    restart: "no"
+
 networks:
   anomaly-detection-network:
     driver: bridge
@@ -194,4 +259,6 @@ networks:
 
 volumes:
   redis_data:
+    driver: local
+  mlflow_data:
     driver: local
