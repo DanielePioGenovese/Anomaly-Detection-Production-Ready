@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     mlflow_experiment_name: str = "isolation_forest_prod"  # MLflow experiment name to organize runs
     mlflow_model_name: str = "if_anomaly_detector"         # MLflow Model Registry name. Used for versioning and deployment
     entity_df_path: str = "data/processed_datasets/industrial_washer_normal_features" # Path to Parquet file with machine IDs (entity_id, timestamp)
-    feast_repo_path: str = "services/feature_store_service/src" # Path to Feast repository (feature store metadata)
+    feast_repo_path: str = "feature_store_service/src" # Path to Feast repository (feature store metadata)
     feature_service_name: str = "machine_anomaly_service_v1" # Name of Feast FeatureService (defines which features to load)
     event_timestamp_column: str = "timestamp"              # Name of timestamp column for temporal data ordering
     output_dir: str = "outputs"                            # Directory to save JSON artifacts (history, thresholds)

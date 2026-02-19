@@ -243,11 +243,13 @@ services:
       - PYTHONPATH=/training_service
       - PYTHONUNBUFFERED=1
     volumes:
-      - ./data:/training_service/data
-      - ./models:/training_service/models
-      - ./logs:/training_service/logs
-      - ./outputs:/training_service/outputs
-      - ./services/feature_store_service/src:/training_service/services/feature_store_service/src:ro
+    - ./data:/training_service/data
+    - ./models:/training_service/models
+    - ./logs:/training_service/logs
+    - ./outputs:/training_service/outputs
+    - ./services/feature_store_service/src:/training_service/feature_store_service/src:ro
+    - ./data/registry:/data/registry   # ← add this
+    - ./data/offline:/data/offline     # ← add this too (needed for FileSource paths)
     restart: "no"
 
 networks:

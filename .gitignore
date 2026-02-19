@@ -25,6 +25,8 @@ streaming_data/
 processed_datasets/
 synthetic_datasets/
 data/offline
+.data/
+
 
 # Kafka
 kafka_storage/
