@@ -1,1 +1,5 @@
-from config.config import IsolationForestConfig
+from .settings import Settings
+
+settings = Settings()
+
+__all__ = ["Settings", "settings"]

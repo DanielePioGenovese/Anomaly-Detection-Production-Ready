@@ -3,7 +3,7 @@ services:
   # REDPANDA - Message Broker (Kafka-compatible)
   # ============================================================================
   redpanda:
-    image: docker.redpanda.com/redpandadata/redpanda:latest
+    image: docker.redpanda.com/redpandadata/redpanda:latest # non metto build perché voglio usare l'immagine ufficiale più recente(presa da from del dockerfile)
     container_name: redpanda_broker
     command:
       - redpanda
@@ -86,16 +86,16 @@ services:
       - ./data/registry:/data/registry
       - ./data/offline:/data/offline
       - ./services/feature_store_service/src:/feature_store_service/src:ro
+    command: ["uv", "run", "feast", "apply"]
     networks:
       - anomaly-detection-network
-    command: ["uv", "run", "feast", "apply"]
     restart: 'no'  # Run once only
 
   # ============================================================================
   # FEAST FEATURE SERVER - Serve Features via HTTP API
   # ============================================================================  
   feature_store_service:
-    build: 
+    build:
       context: .
       dockerfile: services/feature_store_service/Dockerfile
     container_name: feature_store_service
@@ -192,7 +192,6 @@ networks:
     driver: bridge
     name: anomaly-detection-network
 
-# Named volumes
 volumes:
   redis_data:
     driver: local

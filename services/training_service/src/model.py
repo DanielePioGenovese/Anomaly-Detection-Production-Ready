@@ -1,184 +1,54 @@
-"""
-Isolation Forest model module with artifact management.
-"""
-import logging
-from pathlib import Path
-from typing import Dict, Optional
-import numpy as np
-import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
 from sklearn.ensemble import IsolationForest
-import joblib
 
-logger = logging.getLogger(__name__)
-
-
-class IsolationForestModel:
+class ModelFactory:
     """
-    Wrapper class for Isolation Forest anomaly detection model.
-    Handles training, prediction, and artifact management.
+    Factory pattern: metodo statico che assembla una Pipeline
+    complessa con preprocessing + modello.
     """
-    
-    def __init__(self, **params):
+    @staticmethod
+    def build_pipeline(num_cols, cat_cols, settings): # cat_cols = Cycle_Phase_ID
         """
-        Initialize the Isolation Forest model.
+        Costruisce Pipeline sklearn con:
+        - ColumnTransformer (preprocessing parallelo per num/cat)
+        - IsolationForest (anomaly detector)
         
         Args:
-            **params: Parameters for sklearn's IsolationForest
-                Common parameters:
-                - n_estimators: Number of trees (default: 100)
-                - contamination: Expected proportion of anomalies (default: 0.1)
-                - max_samples: Number of samples to train each tree (default: 'auto')
-                - random_state: Random seed for reproducibility
-        """
-        self.model = IsolationForest(**params)
-        self.params = params
-        self.is_trained = False
-        logger.info(f"IsolationForest initialized with params: {params}")
-
-    def train(self, X: pd.DataFrame) -> None:
-        """
-        Train the Isolation Forest model.
+            num_cols: lista colonne numeriche
+            cat_cols: lista colonne categoriche (Cycle_Phase_ID)
+            settings: oggetto Settings con iperparametri
         
-        Args:
-            X: Training features (preprocessed DataFrame)
-        
-        Raises:
-            ValueError: If input data is invalid
+        Returns:
+            Pipeline oggetto sklearn
         """
-        if X.empty:
-            raise ValueError("Cannot train on empty dataset")
-        
-        logger.info(
-            f"Training model on {X.shape[0]} samples with {X.shape[1]} features"
+        pre = ColumnTransformer(                                # Trasforma in parallelo colonne numeriche e categoriche
+            transformers=[
+                ("num", Pipeline([
+                    ("imp", SimpleImputer(strategy="median")),  # Imputazione con mediana per numeriche (robusta agli outlier)
+                    ("scaler", StandardScaler())                # Standardizzazione (mean=0, std=1) per numeriche
+                ]), num_cols),                                  
+                ("cat", Pipeline([
+                    ("imp", SimpleImputer(strategy="constant", fill_value="missing")), # Imputazione con "missing" per categoriche
+                    ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False)), # One-Hot Encoding per categoriche, ignora categorie non viste in training
+                ]), cat_cols),
+            ],
+            remainder="drop",                           # Drop altre colonne non specificate (es. timestamp, ID)
+            verbose_feature_names_out=False,            # Nomi output più puliti (es. "num__feature1" → "feature1")
         )
 
-        try:
-            self.model.fit(X)
-            self.is_trained = True
-            logger.info("Model training completed successfully")
-        except Exception as e:
-            logger.error(f"Error during model training: {e}")
-            raise
+        model = IsolationForest(
+            n_estimators=settings.training.if_n_estimators, # Numero di alberi nell'ensemble (default 100)
+            contamination=settings.training.contamination,  # Percentuale di anomalie attese (default 0.1 = 10%)
+            random_state=settings.training.random_state,    # Seed per riproducibilità (default 42)
+            n_jobs=-1,                                  # Usa tutti i core disponibili per velocizzare il training                                      
+        )
 
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
-        """
-        Predict anomalies.
-        
-        Args:
-            X: Features for prediction (preprocessed DataFrame)
-        
-        Returns:
-            np.ndarray: Predictions (1 = normal, -1 = anomaly)
-        
-        Raises:
-            RuntimeError: If model is not trained
-        """
-        self._check_trained()
-        
-        logger.debug(f"Predicting on {X.shape[0]} samples")
-        return self.model.predict(X)
+        return Pipeline([("pre", pre),                  # Preprocessing come primo step
+                         ("model", model)])             # Isolation Forest come secondo step
     
-    def score_samples(self, X: pd.DataFrame) -> np.ndarray:
-        """
-        Compute anomaly scores for samples.
-        
-        Args:
-            X: Features (preprocessed DataFrame)
-        
-        Returns:
-            np.ndarray: Anomaly scores (more negative = more anomalous)
-        
-        Raises:
-            RuntimeError: If model is not trained
-        """
-        self._check_trained()
-        
-        logger.debug(f"Computing anomaly scores for {X.shape[0]} samples")
-        return self.model.score_samples(X)
-    
-    def decision_function(self, X: pd.DataFrame) -> np.ndarray:
-        """
-        Compute the decision function.
-        
-        Args:
-            X: Features (preprocessed DataFrame)
-        
-        Returns:
-            np.ndarray: Decision function values
-        
-        Raises:
-            RuntimeError: If model is not trained
-        """
-        self._check_trained()
-        
-        return self.model.decision_function(X)
-    
-    def save_model(self, filepath: Path) -> None:
-        """
-        Save the trained model to disk.
-        
-        Args:
-            filepath: Path where to save the model artifact
-        
-        Raises:
-            RuntimeError: If attempting to save untrained model
-        """
-        if not self.is_trained:
-            raise RuntimeError(
-                "Cannot save untrained model. Train the model first."
-            )
-        
-        try:
-            filepath = Path(filepath)
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            
-            joblib.dump(self.model, filepath)
-            logger.info(f"Model artifact saved to: {filepath}")
-        except Exception as e:
-            logger.error(f"Error saving model artifact: {e}")
-            raise
-    
-    def load_model(self, filepath: Path) -> None:
-        """
-        Load a trained model from disk.
-        
-        Args:
-            filepath: Path to the model artifact
-        
-        Raises:
-            FileNotFoundError: If model file doesn't exist
-        """
-        filepath = Path(filepath)
-        
-        if not filepath.exists():
-            raise FileNotFoundError(f"Model artifact not found: {filepath}")
-        
-        try:
-            self.model = joblib.load(filepath)
-            self.is_trained = True
-            logger.info(f"Model artifact loaded from: {filepath}")
-        except Exception as e:
-            logger.error(f"Error loading model artifact: {e}")
-            raise
-    
-    def get_params(self) -> Dict:
-        """
-        Get model parameters.
-        
-        Returns:
-            Dict: Model parameters
-        """
-        return self.model.get_params()
-    
-    def _check_trained(self) -> None:
-        """
-        Internal method to verify model is trained.
-        
-        Raises:
-            RuntimeError: If model is not trained
-        """
-        if not self.is_trained:
-            raise RuntimeError(
-                "Model must be trained before making predictions. "
-                "Call train() or load_model() first."
-            )
+        # Workflow:
+        #   pipe.fit(X) → pre.fit_transform(X) + model.fit(X_pre)
+        #   pipe.predict(X) → pre.transform(X) + model.predict(X_pre)
