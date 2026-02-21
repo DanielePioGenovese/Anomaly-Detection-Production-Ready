@@ -69,3 +69,5 @@ data/registry
 
 # Training
 outputs/
+MLOPS_FLOW_EXPLAINED.md
+BUGFIX_LOG.md
