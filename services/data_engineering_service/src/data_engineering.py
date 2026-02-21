@@ -397,13 +397,13 @@ class FeatureEngineering:
 
     def _apply_batch_features(self, df: Any) -> Any:
         """
-        Compute long-term batch aggregations (daily / weekly) and join them
+        Compute long-term batch aggregations (daily) and join them
         back to every individual row so the ML model can access them as
         additional input features.
 
         How it works
         ------------
-        1. Truncate each row's timestamp to the desired period (day or week).
+        1. Truncate each row's timestamp to the desired period (day).
         2. Group by [Machine_ID, period] and compute the chosen aggregation.
         3. Left-join the aggregated frame back to the original data on
            [Machine_ID, period], then drop the helper period column.
@@ -425,22 +425,13 @@ class FeatureEngineering:
             real-time readings allows it to distinguish a momentary bump
             (low daily ratio) from a persistent anomaly (high daily ratio).
 
-        Weekly_Current_StdDev  (aggregation_type: weekly)
-            stddev(Current_L1) per machine per week.
-
-            Motors with healthy windings draw a steady current.  As
-            insulation degrades or bearings wear, current draw becomes
-            erratic and the within-week standard deviation grows.  A weekly
-            aggregation smooths out normal load fluctuations and exposes
-            the gradual trend — exactly the signal that is invisible to
-            short streaming windows but important for a predictive model.
         """
         batch_features = self.config.get('batch_features', [])
         if not batch_features:
             logger.info("No batch features configured — skipping")
             return df
 
-        logger.info("Applying batch (daily/weekly) features")
+        logger.info("Applying batch (daily) features")
 
         timestamp_col = self.config['schema']['timestamp_column']
         partition_cols = self.config['schema']['partition_columns']
@@ -507,9 +498,9 @@ class FeatureEngineering:
 
             # ── Step 4: null out the first (incomplete) period per machine ────
             #
-            # The first calendar period a machine appears in (day or week) is
-            # almost always INCOMPLETE: data collection started mid-day or
-            # mid-week, so the aggregation is computed on fewer observations
+            # The first calendar period a machine appears in (day) is
+            # almost always INCOMPLETE: data collection started mid-day,
+            # so the aggregation is computed on fewer observations
             # than a full period contains.  Providing a value for this period
             # is misleading because the ML model cannot distinguish "quiet
             # machine" from "machine we only watched for 3 hours today".
@@ -522,9 +513,6 @@ class FeatureEngineering:
             #   period 2024-01-02 → value (full 24 h ✓)
             #   period 2024-01-03 → value (full 24 h ✓)
             #
-            # Timeline example (weekly feature, data starts 2024-01-01):
-            #   week  2024-W01   → NULL  (< 7 days — incomplete week)
-            #   week  2024-W02   → value (full 7 days ✓)
             _FIRST_PERIOD_COL = "_batch_first_period_"
             machine_window = Window.partitionBy(*partition_cols)
             df = df.withColumn(

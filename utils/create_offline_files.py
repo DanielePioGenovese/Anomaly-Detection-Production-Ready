@@ -78,7 +78,6 @@ BATCH_SCHEMA = pa.schema([
 
     # ── Batch / aggregated features ───────────────────────────────────────────
     pa.field("Daily_Vibration_PeakMean_Ratio",  pa.float32()),
-    pa.field("Weekly_Current_StdDev",           pa.float32()),
 ])
 
 
