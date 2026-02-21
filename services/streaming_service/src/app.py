@@ -50,6 +50,20 @@ def run_streaming_service():
             # Simple simulation of "complex" real-time metric
             vibration = data.get("Vibration_mm_s", 0)
             data["Vibration_RollingMax_10min"] = vibration * 1.05 # Aggregation placeholder
+
+            # Feature 1: Current Imbalance Ratio
+            # Formula: (max(L1, L2, L3) - min(L1, L2, L3)) / mean(L1, L2, L3)
+            l1, l2, l3 = data.get("Current_L1", 0.0), data.get("Current_L2", 0.0), data.get("Current_L3", 0.0)
+            currents = [l1, l2, l3]
+            max_c, min_c = max(currents), min(currents)
+            mean_c = sum(currents) / 3.0
+            
+            imbalance_ratio = (max_c - min_c) / mean_c if mean_c > 0 else 0.0
+            data["Current_Imbalance_Ratio"] = imbalance_ratio
+
+            # Feature 2: Current Imbalance Rolling Mean 5min
+            # Simulation of rolling mean
+            data["Current_Imbalance_RollingMean_5min"] = imbalance_ratio * 1.02 # Aggregation placeholder
             
             # Prepare for Feast: Convert to DataFrame
             df_row = pd.DataFrame([data])
