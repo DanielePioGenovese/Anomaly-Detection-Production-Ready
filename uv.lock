@@ -3326,7 +3326,11 @@ feature-store = [
 ]
 ingestion = [
     { name = "confluent-kafka" },
+    { name = "joblib" },
     { name = "numpy" },
+    { name = "pandas" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
     { name = "quixstreams" },
     { name = "scikit-learn" },
     { name = "scipy" },
@@ -3338,8 +3342,18 @@ spark-services = [
     { name = "pyspark" },
     { name = "pyyaml" },
 ]
+streaming = [
+    { name = "feast", extra = ["redis"] },
+    { name = "joblib" },
+    { name = "pandas" },
+    { name = "python-dotenv" },
+    { name = "quixstreams" },
+    { name = "scikit-learn" },
+]
 training-ml = [
+    { name = "joblib" },
     { name = "numpy" },
+    { name = "pandas" },
     { name = "pyarrow" },
     { name = "scikit-learn" },
 ]
@@ -3368,7 +3382,11 @@ dataset-creation-2 = [
 feature-store = [{ name = "feast", extras = ["redis"], specifier = ">=0.58.0" }]
 ingestion = [
     { name = "confluent-kafka", specifier = ">=2.4,<2.12" },
+    { name = "joblib", specifier = ">=1.4.0" },
     { name = "numpy", specifier = ">=2.4.1" },
+    { name = "pandas", specifier = ">=2.2.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "quixstreams", specifier = ">=3.0.0" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "scipy", specifier = ">=1.17.0" },
@@ -3378,8 +3396,18 @@ spark-services = [
     { name = "pyspark", specifier = ">=4.1.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]
+streaming = [
+    { name = "feast", extras = ["redis"], specifier = ">=0.58.0" },
+    { name = "joblib", specifier = ">=1.4.0" },
+    { name = "pandas", specifier = ">=2.2.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "quixstreams", specifier = ">=3.0.0" },
+    { name = "scikit-learn", specifier = ">=1.5.0" },
+]
 training-ml = [
+    { name = "joblib", specifier = ">=1.4.0" },
     { name = "numpy", specifier = ">=2.4.1" },
+    { name = "pandas", specifier = ">=2.2.0" },
     { name = "pyarrow", specifier = ">=19.0.1" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
 ]

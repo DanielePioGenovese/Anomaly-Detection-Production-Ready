@@ -13,8 +13,8 @@ WORKDIR /feature_store_service
 # Install C++ build tools (build-essential) required for compiling certain Python libraries (e.g., Pandas, Feast).
 # Clean up apt cache afterwards to minimize image size.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential \
- && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency definition files to the working directory
 COPY pyproject.toml uv.lock ./

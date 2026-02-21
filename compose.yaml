@@ -22,15 +22,15 @@ services:
       - "18081:18081" # Schema Registry
       - "18082:18082" # Pandaproxy
       - "19092:19092" # Kafka API (external)
-      - "19644:9644"  # Admin API
+      - "19644:9644" # Admin API
     volumes:
       - ./redpanda_storage:/var/lib/redpanda/data
-    healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
-      interval: 15s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
+    # healthcheck:
+    #   test: [ "CMD", "rpk", "cluster", "health" ]
+    #   interval: 20s
+    #   timeout: 10s
+    #   retries: 5
+    #   start_period: 60s
     networks:
       - anomaly-detection-network
 
@@ -45,7 +45,7 @@ services:
       KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
     depends_on:
       redpanda:
-        condition: service_healthy
+        condition: service_started
     networks:
       - anomaly-detection-network
 
@@ -53,19 +53,17 @@ services:
   # REDIS - Online Feature Store
   # ============================================================================
   redis:
-    image: redis:7-alpine
-    container_name: redis
-    command: ['redis-server', '--appendonly', 'yes']
+    build:
+      context: ./services/redis_service
+      dockerfile: Dockerfile
+    container_name: redis_online_store
     ports:
-      - '6379:6379'
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
+      - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - anomaly-detection-network
 
@@ -73,7 +71,7 @@ services:
   # FEAST APPLY - Register Feature Definitions (Run Once)
   # ============================================================================
   feature_store_apply:
-    build: 
+    build:
       context: .
       dockerfile: services/feature_store_service/Dockerfile
     container_name: feature_store_apply
@@ -86,10 +84,11 @@ services:
       - ./data/registry:/data/registry
       - ./data/offline:/data/offline
       - ./services/feature_store_service/src:/feature_store_service/src:ro
-    command: ["uv", "run", "feast", "apply"]
+    command: [ "uv", "run", "feast", "apply" ]
     networks:
       - anomaly-detection-network
-    restart: 'no'  # Run once only
+    restart: 'no' # Run once only
+    profiles: [ "setup" ]
 
   # ============================================================================
   # FEAST FEATURE SERVER - Serve Features via HTTP API
@@ -99,11 +98,10 @@ services:
       context: .
       dockerfile: services/feature_store_service/Dockerfile
     container_name: feature_store_service
+    profiles: [ "online" ]
     depends_on:
       redis:
         condition: service_healthy
-      feature_store_apply:
-        condition: service_completed_successfully
     environment:
       - PYTHONUNBUFFERED=1
       - FEAST_REPO_PATH=/feature_store_service
@@ -115,8 +113,13 @@ services:
       - "8000:6566" # Now i can see it through the browser
     networks:
       - anomaly-detection-network
-    command: ["uv", "run", "feast", "serve", "--host", "0.0.0.0", "--port", "6566"]
+    command: [ "uv", "run", "feast", "serve", "--host", "0.0.0.0", "--port", "6566" ]
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
   # ============================================================================
   # DATA GENERATION & PROCESSING SERVICES
@@ -124,14 +127,14 @@ services:
   create_datasets:
     build:
       context: .
-      dockerfile: services/dockerfile.spark_services 
+      dockerfile: services/dockerfile.spark_services
     container_name: create_datasets
-    command: ["-m", "services.create_datasets_service.src.example_usage"]
+    command: [ "-m", "services.create_datasets_service.src.example_usage" ]
     environment:
       - APP_HOME=/app
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=INFO
-      - SPARK_DRIVER_MEMORY=4g
+      - SPARK_DRIVER_MEMORY=2g
     volumes:
       - ./data:/app/data
     ports:
@@ -142,32 +145,32 @@ services:
     restart: "no"
 
   data_engineering:
-    build: 
+    build:
       context: .
       dockerfile: services/dockerfile.spark_services
     container_name: data_engineering_service
     depends_on:
       create_datasets:
         condition: service_completed_successfully
-    command: ["-m", "services.data_engineering_service.src.data_engineering"]
+    command: [ "-m", "services.data_engineering_service.src.data_engineering" ]
     environment:
       - APP_HOME=/app
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=INFO
-      - SPARK_DRIVER_MEMORY=4g
+      - SPARK_DRIVER_MEMORY=2g
     volumes:
       - ./data:/app/data
     ports:
       - "4041:4040"
     networks:
       - anomaly-detection-network
-    shm_size: '2gb' 
+    shm_size: '2gb'
     restart: "no"
 
   feature_loader:
     build:
       context: .
-      dockerfile: services/feature_loader_service/Dockerfile
+      dockerfile: services/feature_loader_service/dockerfile
     container_name: feature_loader
     depends_on:
       redis:
@@ -176,21 +179,129 @@ services:
         condition: service_completed_successfully
       feature_store_apply:
         condition: service_completed_successfully
+    profiles: [ "setup" ]
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - FEAST_REPO_PATH=/feature_loader_service
     volumes:
       - ./data/processed_datasets:/app/data/processed_datasets:ro
-      - ./data/synthetic_datasets:/app/data/synthetic_datasets:ro
+      - ./data/registry:/app/data/registry
     networks:
       - anomaly-detection-network
     restart: 'no'
 
+  # ============================================================================
+  # PRODUCER - Sends telemetry data to Redpanda
+  # ============================================================================
+  producer_service:
+    build:
+      context: .
+      dockerfile: services/producer_service/dockerfile
+    container_name: telemetry_producer
+    profiles: [ "simulation" ]
+    depends_on:
+      redpanda:
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - STREAMING_DATASET=industrial_washer_normal_streaming
+    volumes:
+      # Map synthetic datasets (where generator writes) to streaming_data (where producer reads)
+      - ./data/synthetic_datasets:/producer/data/streaming_data:ro
+    networks:
+      - anomaly-detection-network
+    restart: 'no'
+
+  # ============================================================================
+  # TRAINING SERVICE - Fits preprocessor + trains Isolation Forest model
+  # ============================================================================
+  training_service:
+    build:
+      context: .
+      dockerfile: services/training_service/dockerfile
+    container_name: training_service
+    profiles: [ "setup" ]
+    depends_on:
+      hist_ingestion:
+        condition: service_completed_successfully
+      mlflow:
+        condition: service_healthy
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Training reads processed data written by hist_ingestion
+      - ./data/processed_datasets:/training/data/raw:ro
+      # Training writes model artifacts (model + preprocessor)
+      - ./data/models:/training/models
+      # Training writes metrics
+      - ./data/metrics:/training/metrics
+    networks:
+      - anomaly-detection-network
+    restart: 'no'
+
+  # ============================================================================
+  # STREAMING SERVICE - Real-time feature engineering (Quix Streams)
+  # ============================================================================
+  streaming_service:
+    build:
+      context: .
+      dockerfile: services/streaming_service/dockerfile
+    container_name: streaming_service
+    profiles: [ "online" ]
+    depends_on:
+      redpanda:
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - FEAST_REPO_PATH=/streaming_service
+    volumes:
+      - ./data/models:/streaming_service/data/models:ro
+      - ./data/registry:/app/data/registry
+    networks:
+      - anomaly-detection-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # INFERENCE SERVICE - Serving Predictions via FastAPI
+  # ============================================================================
+  inference_service:
+    build:
+      context: .
+      dockerfile: services/inference_service/dockerfile
+    container_name: inference_service
+    profiles: [ "online" ]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FEAST_REPO_PATH=/inference_service
+    volumes:
+      # Model Artifacts (Model + Preprocessor)
+      - ./data/models:/inference_service/data/models:ro
+      # Feast Registry and Configuration
+      # Mount to /app/data/registry because feature_store.yaml uses this absolute path
+      - ./data/registry:/app/data/registry:ro
+      - ./services/feature_store_service/config/feature_store.yaml:/inference_service/feature_store.yaml:ro
+
+    ports:
+      - "8000:8000"
+    networks:
+      - anomaly-detection-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # MLFLOW SERVER - Model Registry
+  # ============================================================================
   mlflow:
     build:
       context: .
-      dockerfile: services/mlflow/Dockerfile
+      dockerfile: services/mlflow_service/Dockerfile
     container_name: mlflow
     command:
       - uv
@@ -216,7 +327,7 @@ services:
     networks:
       - anomaly-detection-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      test: [ "CMD", "curl", "-f", "http://localhost:5000" ]
       interval: 30s
       timeout: 10s
       start_period: 5s
@@ -233,9 +344,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4g      
+          memory: 4g
         reservations:
-          memory: 2g        
+          memory: 2g
     depends_on:
       mlflow:
         condition: service_healthy
@@ -251,14 +362,14 @@ services:
       - PYTHONPATH=/training_service
       - PYTHONUNBUFFERED=1
     volumes:
-    - mlflow_data:/mlruns 
-    - ./data:/training_service/data
-    - ./models:/training_service/models
-    - ./logs:/training_service/logs
-    - ./outputs:/training_service/outputs
-    - ./services/feature_store_service/src:/training_service/feature_store_service/src:ro
-    - ./data/registry:/data/registry   
-    - ./data/offline:/data/offline     
+      - mlflow_data:/mlruns
+      - ./data:/training_service/data
+      - ./models:/training_service/models
+      - ./logs:/training_service/logs
+      - ./outputs:/training_service/outputs
+      - ./services/feature_store_service/src:/training_service/feature_store_service/src:ro
+      - ./data/registry:/data/registry
+      - ./data/offline:/data/offline
     restart: "no"
 
 networks:
