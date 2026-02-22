@@ -342,42 +342,6 @@ services:
   # ============================================================================
   # TRAINING PIPELINE - Run Once (or manually on schedule)
   # ============================================================================
-  training_pipeline:
-    build:
-      context: .
-      dockerfile: services/training_service/Dockerfile
-    container_name: training_pipeline
-    profiles: [ "setup" ]
-    deploy:
-      resources:
-        limits:
-          memory: 4g
-        reservations:
-          memory: 2g
-    depends_on:
-      mlflow:
-        condition: service_started
-      feature_store_apply:
-        condition: service_completed_successfully
-    networks:
-      - anomaly-detection-network
-    environment:
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-      - MLFLOW_ARTIFACT_URI=mlflow-artifacts:/
-      - MLFLOW_EXPERIMENT_NAME=isolation_forest_prod
-      - MODEL_NAME=if_anomaly_detector
-      - PYTHONPATH=/training_service
-      - PYTHONUNBUFFERED=1
-    volumes:
-      - mlflow_data:/mlruns
-      - ./data:/training_service/data
-      - ./models:/training_service/models
-      - ./logs:/training_service/logs
-      - ./outputs:/training_service/outputs
-      - ./services/feature_store_service/src:/training_service/feature_store_service/src:ro
-      - ./data/registry:/data/registry
-      - ./data/offline:/data/offline
-    restart: "no"
 
 networks:
   anomaly-detection-network:
