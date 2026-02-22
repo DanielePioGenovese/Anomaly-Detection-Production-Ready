@@ -226,9 +226,13 @@ services:
       dockerfile: services/training_service/dockerfile
     container_name: training_service
     profiles: [ "setup" ]
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 2g
     depends_on:
-      data_engineering:
-        condition: service_completed_successfully
       mlflow:
         condition: service_started
       feature_store_apply:
@@ -347,9 +351,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8g
-        reservations:
           memory: 4g
+        reservations:
+          memory: 2g
     depends_on:
       mlflow:
         condition: service_started

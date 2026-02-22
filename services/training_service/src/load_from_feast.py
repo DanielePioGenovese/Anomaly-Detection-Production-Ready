@@ -27,14 +27,13 @@ class DataManager:
         t1 = time.time()
         logger.info("[FEAST] Lettura entity_df dal percorso Spark...")
         # Carichiamo solo le colonne minime necessarie per Feast
-        entity_df = pd.read_parquet(self.s.entity_df_path)[["Machine_ID", "timestamp"]]
-        
-        # Rinomina per chiarezza verso Feast
-        entity_df.rename(columns={"timestamp": "event_timestamp"}, inplace=True)
+        entity_df = pd.read_parquet(self.s.entity_df_path)
+        logger.info(f"[FEAST] Actual columns: {entity_df.columns.tolist()}")  # add this
+        entity_df = entity_df[["Machine_ID", "timestamp"]]
         
         # Mantieni UTC coerentemente
-        entity_df["event_timestamp"] = pd.to_datetime(
-            entity_df["event_timestamp"], utc=True
+        entity_df["timestamp"] = pd.to_datetime(
+            entity_df["timestamp"], utc=True
         )
         logger.info(f"[FEAST] entity_df letto in {time.time()-t1:.2f}s — {len(entity_df)} righe")
 
