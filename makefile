@@ -1,3 +1,64 @@
+# ==============================================================================
+# WASHING MACHINES ANOMALY DETECTION - PIPELINE COMMANDS (NEW APPROACH)
+# Orchestrated beautifully with Docker Compose profiles
+# ==============================================================================
+.PHONY: help-new setup online simulation stop clean logs-setup logs-online logs-simulation
+
+help-new:
+	@echo "=========================================================================="
+	@echo "WASHING MACHINES ANOMALY DETECTION - NEW 3-STEP PIPELINE"
+	@echo "=========================================================================="
+	@echo "1) make setup        : (STEP 1) Run offline pipeline (Data Gen, PySpark, Feast, Training)"
+	@echo "2) make online       : (STEP 2) Run real-time inference (Feast Server, Quix, FastAPI)"
+	@echo "3) make simulation   : (STEP 3) Start the Producer to simulate live telemetry sensors"
+	@echo "4) make stop         : Stop all running containers gracefully"
+	@echo "5) make clean        : Destructive clean (stops containers AND removes all volumes/data)"
+	@echo ""
+	@echo "Logs:"
+	@echo "make logs-setup      : Follow logs for the offline setup phase"
+	@echo "make logs-online     : Follow logs for the real-time services"
+	@echo "make logs-simulation : Follow logs for the data producer"
+	@echo "=========================================================================="
+
+setup:
+	@echo "--- [1/3] Starting Offline Setup Pipeline ---"
+	@echo "This will generate data, engineer features, and train the MLflow model."
+	docker compose --profile setup up -d --build
+
+online:
+	@echo "--- [2/3] Starting Online Real-Time Pipeline ---"
+	@echo "This will start the FastAPI inference server and Quix streams."
+	docker compose --profile online up -d --build
+
+simulation:
+	@echo "--- [3/3] Starting Telemetry Data Simulation ---"
+	@echo "This starts the producer sending fake telemetry through Redpanda."
+	docker compose --profile simulation up -d --build
+
+stop:
+	@echo "Stopping all services..."
+	docker compose --profile setup --profile online --profile simulation down
+
+clean:
+	@echo "🧹 Deep cleaning... Removing containers, networks, and all data volumes"
+	docker compose --profile setup --profile online --profile simulation down -v
+	@echo "Environment completely reset."
+
+logs-setup:
+	docker compose --profile setup logs -f
+
+logs-online:
+	docker compose --profile online logs -f
+
+logs-simulation:
+	docker compose --profile simulation logs -f
+
+
+# ==============================================================================
+# LEGACY COMMANDS (PREVIOUS ITERATIONS)
+# Kept for backward compatibility and granular testing
+# ==============================================================================
+
 # ----------------------------------------------
 # Variables & Configuration
 # ----------------------------------------------
@@ -7,7 +68,7 @@
         mlflow_up training_up all_up \
         mlflow_down training_down all_down \
         mlflow_logs training_logs all_logs \
-        run_all clean \
+        run_all \
 		all
 
 # ----------------------------------------------
@@ -15,7 +76,9 @@
 # ----------------------------------------------
 help:
 	@echo "=============================================="
-	@echo "DATA PIPELINE & FEATURE STORE MAKEFILE"
+	@echo "DATA PIPELINE & FEATURE STORE MAKEFILE (LEGACY)"
+	@echo "=============================================="
+	@echo ">> Use 'make help-new' to view the modern 3-step pipeline commands! <<"
 	@echo "=============================================="
 	@echo "1) create_datasets         : Build/Run dataset creation"
 	@echo "2) data_engineering        : Run data engineering pipeline"
@@ -27,7 +90,7 @@ help:
 	@echo "8) all_up                  : Start MLflow and Training Pipeline"
 	@echo "9) all_down                : Stop MLflow and Training Pipeline"
 	@echo "10) all_logs               : View all logs"
-	@echo "11) clean                  : Stop all containers and remove volumes"
+	@echo "11) clean-legacy           : Stop all containers and remove volumes"
 	@echo "=============================================="
 
 # ----------------------------------------------
@@ -122,7 +185,7 @@ all_logs:
 
 run_all: final_datasets run_feature_store
 
-clean:
+clean-legacy:
 	@echo "Cleaning up: stopping containers and removing volumes..."
 	docker compose down -v
 	@echo "Environment cleaned."
@@ -130,28 +193,8 @@ clean:
 all: final_datasets run_feature_store build_mlflow build_training mlflow_up training_up
 	@echo "All services are up and running."
 	
-	
-	
-# ==============================================================================
-# Washing Machines Anomaly Detection - Makefile
-# ==============================================================================
-
-.PHONY: help infra data ingestion train pipeline streaming stop clean logs-mlflow logs-train
-
-# Default target
-help:
-	@echo "Available commands:"
-	@echo "  make infra       - Start core infrastructure (MLflow, Redis)"
-	@echo "  make data        - Generate synthetic datasets"
-	@echo "  make ingestion   - Ingest historical data"
-	@echo "  make train       - Train the model"
-	@echo "  make pipeline    - Run the full offline pipeline (infra -> data -> ingestion -> train)"
-	@echo "  make streaming   - Start real-time streaming services"
-	@echo "  make stop        - Stop all services"
-	@echo "  make clean       - Stop services and remove volumes (RESET)"
-
 # ------------------------------------------------------------------------------
-# 1. CORE INFRASTRUCTURE
+# INFRA & OLD PIPELINE COMMANDS
 # ------------------------------------------------------------------------------
 infra:
 	@echo "--- [1/4] Starting Infrastructure (MLflow & Redis) ---"
@@ -159,9 +202,6 @@ infra:
 	@echo "Waiting for services to be ready..."
 	@timeout /t 10 >nul 2>&1 || ping -n 11 127.0.0.1 >nul
 
-# ------------------------------------------------------------------------------
-# 2. OFFLINE PIPELINE (Data & Training)
-# ------------------------------------------------------------------------------
 data:
 	@echo "--- [2/4] Generating Synthetic Data ---"
 	docker compose up --build create_datasets
@@ -174,28 +214,12 @@ train:
 	@echo "--- [4/4] Training Model ---"
 	docker compose up --build training_service
 
-# Esegue l'intera pipeline sequenziale
 pipeline: infra data ingestion train
 	@echo "✅ OFFLINE PIPELINE COMPLETED SUCCESSFULLY"
 
-# ------------------------------------------------------------------------------
-# 3. ONLINE PIPELINE (Real-time)
-# ------------------------------------------------------------------------------
 streaming:
 	@echo "--- Starting Real-time Streaming & Inference ---"
 	docker compose up -d --build streaming_service inference_service
-
-# ------------------------------------------------------------------------------
-# 4. UTILITIES
-# ------------------------------------------------------------------------------
-stop:
-	@echo "Stopping services..."
-	docker compose down --remove-orphans
-
-clean:
-	@echo "Cleaning up (Removing volumes & orphans)..."
-	docker compose down -v --remove-orphans
-	@echo "Done."
 
 logs-mlflow:
 	docker logs -f mlflow
