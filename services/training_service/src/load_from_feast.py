@@ -16,33 +16,23 @@ class DataManager:
         
     def load_data(self) -> pd.DataFrame:
         """
-        Carica dati da Feast Feature Store.
-        Ritorna il dataset completo ordinato temporalmente.
+        Carica i dati elaborati da PySpark.
+        Bypassa Feast (get_historical_features) per il training poiché i dati
+        in /data/offline/machines_batch_features contengono già tutte le 
+        feature temporali (rolling e batch) aggiunte dal Data Engineering service.
+        Questo evita il blocco memoria di Dask durante il point-in-time join.
         """
-        logger.info("[DATA] Loading entity df and features from Feast")
-        # Step 1: Carica entity_df dal parquet
-        entity_df = pd.read_parquet(self.s.entity_df_path)
+        logger.info(f"[DATA] Loading historical PySpark features directly from {self.s.entity_df_path}")
         
-        # Step 2: Converti timestamp a UTC
-        entity_df[self.s.event_timestamp_column] = pd.to_datetime(
-            entity_df[self.s.event_timestamp_column], utc=True
-        )
-
-        # Step 3: Recupera feature service da Feast
-        feature_service = self.store.get_feature_service(self.s.feature_service_name)
-
-        # Step 4: Chiedi a Feast i dati storici per le entità e le features specificate
-        df = self.store.get_historical_features(
-            entity_df=entity_df,
-            features=feature_service
-        ).to_df()
+        # Leggi l'intera directory Parquet elaborata precedentemente da Spark
+        df = pd.read_parquet(self.s.entity_df_path)
         
         # Mantieni UTC coerentemente
         df[self.s.event_timestamp_column] = pd.to_datetime(
             df[self.s.event_timestamp_column], utc=True
         )
         
-        logger.info(f"[DATA] Loaded {len(df)} rows from Feast")
+        logger.info(f"[DATA] Loaded {len(df)} rows ready for training")
 
         return df
 

@@ -72,10 +72,11 @@ def run_streaming_service():
             # Create a DataFrame that matches the Feast FeatureView schema
             # We must ensure the timestamp is a datetime object
             feast_df = df_row.copy()
-            feast_df['event_timestamp'] = pd.to_datetime(timestamp_str)
+            # Feast expects the column name to match timestamp_field='timestamp' in data_sources.py
+            feast_df['timestamp'] = pd.to_datetime(timestamp_str)
             
-            # Push to the PushSource defined in Feast
-            store.push("washing_stream_source", feast_df)
+            # Push to the PushSource defined in Feast (called 'washing_stream_push')
+            store.push("washing_stream_push", feast_df)
             
             logger.info(f"Processed and pushed telemetry for {machine_id} to Redis")
 
