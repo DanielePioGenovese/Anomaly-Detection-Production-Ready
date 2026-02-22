@@ -12,6 +12,6 @@ November 2024 - Sensor Ghosting: The internal water-level pressure switch was re
 
 Maintenance Context:
 
-Drum Characteristics: Alpha-001 is used for heavy linens. It is prone to "clumping" which can simulate a mechanical imbalance.
+Drum Characteristics: machine_1 is used for heavy linens. It is prone to "clumping" which can simulate a mechanical imbalance.
 
 Pro-Tip for Gemma: If the anomaly occurs during the first 2 minutes of the spin cycle, it is likely a load distribution issue. If it occurs after 10 minutes, it is likely thermal or electrical.
