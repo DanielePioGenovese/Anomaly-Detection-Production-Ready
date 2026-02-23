@@ -44,6 +44,7 @@ services:
       KAFKA_BROKERS: redpanda:9092
       KAFKA_SCHEMAREGISTRY_ENABLED: "true"
       KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
+    profiles: [ "online" ]
     depends_on:
       redpanda:
         condition: service_started
