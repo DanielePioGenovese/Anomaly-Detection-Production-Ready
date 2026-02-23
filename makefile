@@ -127,8 +127,6 @@ apply_feature_store: sync
 service_feature_store:
 	@echo "Starting Feast Server..."
 	docker compose up --build -d feature_store_service
-	@echo "Feast Server is running at http://localhost:6566/health"
-	docker compose logs -f feature_store_service
 
 run_feature_store: apply_feature_store service_feature_store
 
@@ -227,3 +225,7 @@ logs-mlflow:
 
 logs-train:
 	docker logs -f training_service
+
+
+debug:
+	docker compose up redis redpanda redpanda_console feature_store_service streaming_service producer_service 

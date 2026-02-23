@@ -1,10 +1,13 @@
+import json
 import logging
+import math
 import os
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 
 import pandas as pd
 from feast import FeatureStore
+from feast.data_source import PushMode
 from quixstreams import Application
 
 from config.config import Config
@@ -82,12 +85,36 @@ def run_streaming_service():
         auto_offset_reset="earliest",
     )
 
-    input_topic = app.topic(Config.TOPIC_TELEMETRY, value_deserializer="json")
+    # Use bytes deserializer — the raw messages may contain NaN/Infinity
+    # which are valid Python floats but illegal in strict JSON (orjson rejects them).
+    # We parse manually with the stdlib json module which handles them gracefully.
+    input_topic = app.topic(Config.TOPIC_TELEMETRY, value_deserializer="bytes")
     sdf = app.dataframe(input_topic)
 
     # ------------------------------------------------------------------
-    # 3. Feature engineering + Feast push
+    # 3. Manual JSON decode (tolerant of NaN / Infinity)
     # ------------------------------------------------------------------
+    def decode_message(raw: bytes) -> dict | None:
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            logger.warning(f"Could not decode message, skipping: {e} | raw[:80]={raw[:80]}")
+            return None
+
+    sdf = sdf.apply(decode_message)
+    sdf = sdf.filter(lambda x: x is not None)
+
+    # ------------------------------------------------------------------
+    # 4. Feature engineering + Feast push
+    # ------------------------------------------------------------------
+    def _safe_float(value, default: float = 0.0) -> float:
+        """Cast to float and replace NaN/Inf with a safe default."""
+        try:
+            f = float(value)
+            return default if not math.isfinite(f) else f
+        except (TypeError, ValueError):
+            return default
+
     def process_and_push(data: dict) -> None:
         machine_id   = str(data.get("Machine_ID", "Unknown"))
         timestamp_str = data.get("timestamp", "")
@@ -99,9 +126,9 @@ def run_streaming_service():
             return
 
         # ── Feature 1: Current_Imbalance_Ratio (instantaneous) ──────────
-        l1 = float(data.get("Current_L1", 0.0))
-        l2 = float(data.get("Current_L2", 0.0))
-        l3 = float(data.get("Current_L3", 0.0))
+        l1 = _safe_float(data.get("Current_L1"))
+        l2 = _safe_float(data.get("Current_L2"))
+        l3 = _safe_float(data.get("Current_L3"))
         currents = [l1, l2, l3]
         mean_c = sum(currents) / 3.0
         imbalance_ratio = (
@@ -109,7 +136,7 @@ def run_streaming_service():
         )
 
         # ── Feature 2: Vibration_RollingMax_10min ───────────────────────
-        vibration = float(data.get("Vibration_mm_s", 0.0))
+        vibration = _safe_float(data.get("Vibration_mm_s"))
         vib_win = vibration_windows[machine_id]
         _evict_old(vib_win, ts - WINDOW_10MIN)
         vib_win.append((ts, vibration))
@@ -137,15 +164,15 @@ def run_streaming_service():
             "timestamp":                         ts,
             # Raw sensor readings (match schema in features.py)
             "Cycle_Phase_ID":                    int(data.get("Cycle_Phase_ID", 0)),
-            "Current_L1":                        float(l1),
-            "Current_L2":                        float(l2),
-            "Current_L3":                        float(l3),
-            "Voltage_L_L":                       float(data.get("Voltage_L_L", 0.0)),
-            "Water_Temp_C":                      float(data.get("Water_Temp_C", 0.0)),
-            "Motor_RPM":                         float(data.get("Motor_RPM", 0.0)),
-            "Water_Flow_L_min":                  float(data.get("Water_Flow_L_min", 0.0)),
-            "Vibration_mm_s":                    float(vibration),
-            "Water_Pressure_Bar":                float(data.get("Water_Pressure_Bar", 0.0)),
+            "Current_L1":                        _safe_float(l1),
+            "Current_L2":                        _safe_float(l2),
+            "Current_L3":                        _safe_float(l3),
+            "Voltage_L_L":                       _safe_float(data.get("Voltage_L_L")),
+            "Water_Temp_C":                      _safe_float(data.get("Water_Temp_C")),
+            "Motor_RPM":                         _safe_float(data.get("Motor_RPM")),
+            "Water_Flow_L_min":                  _safe_float(data.get("Water_Flow_L_min")),
+            "Vibration_mm_s":                    _safe_float(vibration),
+            "Water_Pressure_Bar":                _safe_float(data.get("Water_Pressure_Bar")),
             # Derived / streaming features
             "Current_Imbalance_Ratio":           float(imbalance_ratio),
             "Vibration_RollingMax_10min":        float(vibration_rolling_max),
@@ -156,9 +183,9 @@ def run_streaming_service():
 
         # ── Push to Feast Online Store (Redis) ───────────────────────────
         try:
-            store.push("washing_stream_push", feast_df)
+            store.push("washing_stream_push", feast_df, to=PushMode.ONLINE_AND_OFFLINE)
             logger.info(
-                f"[{machine_id}] Pushed to Feast | "
+                f"[{machine_id}] Pushed to Feast (online+offline) | "
                 f"ImbalanceRatio={imbalance_ratio:.4f} | "
                 f"VibRollingMax={vibration_rolling_max:.4f} | "
                 f"ImbalanceRollingMean={imbalance_rolling_mean:.4f}"

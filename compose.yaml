@@ -276,6 +276,7 @@ services:
     volumes:
       - ./data/models:/streaming_service/data/models:ro
       - ./data/registry:/data/registry
+      - ./data/offline:/data/offline 
     networks:
       - anomaly-detection-network
     restart: unless-stopped
