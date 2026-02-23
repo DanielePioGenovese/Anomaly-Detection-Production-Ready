@@ -102,11 +102,6 @@ machine_batch_features = FeatureView(
         # High ratio = repeated or sustained shock events across hundreds of
         # cycles → strong signal of mechanical deterioration.
         Field(name="Daily_Vibration_PeakMean_Ratio", dtype=Float32),
-
-        # Weekly standard deviation of L1 phase current (per Machine_ID, per week).
-        # Grows as motor insulation degrades or mechanical resistance increases.
-        # The only feature designed to catch slow, multi-day deterioration trends.
-        Field(name="Weekly_Current_StdDev", dtype=Float32),
     ],
     source=machines_batch_source,
 )
