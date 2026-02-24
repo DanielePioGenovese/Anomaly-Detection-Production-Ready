@@ -227,6 +227,6 @@ logs-train:
 	docker logs -f training_service
 
 
-debug:
-	uv run -m --group data-offline utils.create_offline_files \
-	docker compose up redis redpanda redpanda-console feature_store_apply feature_store_service streaming_service producer_service 
+debug: 
+	uv run -m --group data-offline utils.create_offline_files && \
+	docker compose up redis redpanda redpanda-console feature_store_apply feature_store_service streaming_service producer_service
