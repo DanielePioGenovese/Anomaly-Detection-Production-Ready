@@ -226,6 +226,7 @@ logs-mlflow:
 logs-train:
 	docker logs -f training_service
 
+# ---------
 
 debug: 
 	uv run -m --group data-offline utils.create_offline_files && \
