@@ -1,14 +1,15 @@
 import logging
 import os
 import joblib
+import json
 import pandas as pd
 import mlflow
 import mlflow.sklearn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from feast import FeatureStore
+from confluent_kafka import Producer
 import uvicorn
-import preprocessor # Module required for joblib deserialization
 from config.config import Config
 
 # Logging Setup
@@ -26,8 +27,8 @@ app = FastAPI(
 
 # Global State
 model = None
-preproc = None
 store = None
+kafka_producer = None
 FEATURE_VIEW_NAME = "machine_streaming_features"
 
 class PredictionRequest(BaseModel):
@@ -42,7 +43,7 @@ class PredictionResponse(BaseModel):
 @app.on_event("startup")
 def startup_event():
     """Load model artifacts and initialize Feast connection on startup."""
-    global model, store
+    global model, store, kafka_producer
     
     try:
 
@@ -55,14 +56,11 @@ def startup_event():
         logger.info(f"Fetching latest version of model '{model_name}' from MLflow...")
         
         try:
-            # Get latest version (any stage)
-            # Note: In a real scenario, you might filter by "Production" stage
             versions = client.get_latest_versions(model_name, stages=["None", "Staging", "Production"])
             
             if not versions:
                 raise RuntimeError(f"No registered model found for '{model_name}'")
                 
-            # Sort by version number desc just in case
             versions.sort(key=lambda x: int(x.version), reverse=True)
             latest_version = versions[0].version
             
@@ -87,11 +85,17 @@ def startup_event():
         logger.info(f"Initializing Feast Feature Store from {repo_path}...")
         store = FeatureStore(repo_path=repo_path)
         logger.info("✓ Feast Feature Store connection established")
+
+        # 4. Initialize Kafka Producer
+        logger.info("Initializing Kafka Producer...")
+        kafka_producer = Producer({
+            'bootstrap.servers': os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'redpanda:9092'),
+            'acks': 1,
+        })
+        logger.info("✓ Kafka Producer initialized")
         
     except Exception as e:
         logger.error(f"Startup failed: {e}")
-        # Build should fail if artifacts are missing? Or loop?
-        # We raise error to restart container
         raise e
 
 @app.post("/predict", response_model=PredictionResponse)
@@ -105,7 +109,6 @@ def predict_anomaly(request: PredictionRequest):
     machine_id = request.machine_id
     
     # 0. Convert 'M_0010' to integer '10' for Feast Entity matching
-    # Feast expects INT64 for Machine_ID as defined in entity.py
     try:
         if machine_id.startswith("M_"):
             numeric_id = int(machine_id.replace("M_", ""))
@@ -115,12 +118,9 @@ def predict_anomaly(request: PredictionRequest):
         raise HTTPException(status_code=400, detail=f"Invalid machine_id format: {machine_id}. Expected format like 'M_0010' or '10'")
 
     # 1. Fetch Features from Feast using FeatureService
-    # We ask Feast for all available features for the machine using the predefined service
     try:
         logger.debug(f"Fetching online features via FeatureService for numeric_id={numeric_id}")
         
-        # 'machine_anomaly_service_v1' was defined in features.py or feature_services.py
-        # It aggregates both streaming and batch features properly
         response = store.get_online_features(
             features=store.get_feature_service("machine_anomaly_service_v1"),
             entity_rows=[{"Machine_ID": numeric_id}]
@@ -130,7 +130,6 @@ def predict_anomaly(request: PredictionRequest):
         df = pd.DataFrame(data_dict)
         
         # 1.5 Map Feast columns to MLflow required features
-        # model.feature_names_in_ holds the exact columns the Pipeline expects
         try:
             feature_columns = list(model.feature_names_in_)
             df_features = df[feature_columns]
@@ -141,7 +140,6 @@ def predict_anomaly(request: PredictionRequest):
              logger.error(f"Feature Store returned incomplete data for Model. Missing: {e}")
              raise HTTPException(status_code=500, detail=f"Feature/Model Mismatch: {e}")
 
-        # Check for NaNs (Feast returns None if key not in Redis)
         if df_features.isnull().values.any():
             if df_features.isnull().all().all():
                 logger.warning(f"No features found for machine_id={machine_id} (numeric {numeric_id})")
@@ -149,7 +147,6 @@ def predict_anomaly(request: PredictionRequest):
             else:
                 missing_cols = df_features.columns[df_features.isnull().any()].tolist()
                 logger.warning(f"Partial features found for machine_id={machine_id} (numeric {numeric_id}). Missing exactly: {missing_cols}")
-                # Also log the full fetched dictionary for absolute clarity
                 logger.debug(f"Full Feast payload received: {data_dict}")
                 raise HTTPException(status_code=422, detail=f"Incomplete feature data available. Missing exactly: {missing_cols}")
 
@@ -157,19 +154,35 @@ def predict_anomaly(request: PredictionRequest):
         logger.error(f"Error fetching features: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-    # 2. Predict directly using the Pipeline (which includes the internal preprocessor)
+    # 2. Predict
     try:
         prediction_code = model.predict(df_features)[0]
         score = model.decision_function(df_features)[0]
         
         # Isolation Forest: -1 (Anomaly), 1 (Normal)
-        is_anomaly = 1 if prediction_code == -1 else 0
+        # Manteniamo -1/1 su Redpanda per l'AnomalyMonitor
+        # Convertiamo a 0/1 solo per la response HTTP
+        is_anomaly_http = 1 if prediction_code == -1 else 0
         
-        logger.info(f"Prediction for Machine {machine_id}: Is_Anomaly={is_anomaly}, Score={score:.4f}")
+        logger.info(f"Prediction for Machine {machine_id}: Is_Anomaly={is_anomaly_http}, Score={score:.4f}")
+
+        # 3. Pubblica su Redpanda con -1/1 (raw Isolation Forest output)
+        payload = {
+            "machine_id": machine_id,
+            "is_anomaly": int(prediction_code),  # -1 o 1, raw output
+            "anomaly_score": float(score)
+        }
+        kafka_producer.produce(
+            "predictions",
+            value=json.dumps(payload).encode("utf-8")
+        )
+        kafka_producer.flush()
+        logger.info(f"Published prediction to Redpanda: {payload}")
         
+        # 4. Ritorna la response HTTP con 0/1
         return {
             "machine_id": machine_id,
-            "is_anomaly": is_anomaly,
+            "is_anomaly": is_anomaly_http,
             "anomaly_score": float(score)
         }
     except Exception as e:
@@ -178,4 +191,3 @@ def predict_anomaly(request: PredictionRequest):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
