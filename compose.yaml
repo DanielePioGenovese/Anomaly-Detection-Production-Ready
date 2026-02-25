@@ -213,35 +213,6 @@ services:
       - anomaly-detection-network
     restart: "no"
 
-  feature_loader:
-    build:
-      context: .
-      dockerfile: services/feature_loader_service/dockerfile
-    container_name: feature_loader
-    depends_on:
-      redis:
-        condition: service_healthy
-      data_engineering:
-        condition: service_completed_successfully
-      feature_store_apply:
-        condition: service_completed_successfully
-    profiles: [ "setup" ]
-    environment:
-      - PYTHONUNBUFFERED=1
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - FEAST_REPO_PATH=/feature_loader_service
-    volumes:
-      - ./data/processed_datasets:/app/data/processed_datasets:ro
-      - ./data/registry:/data/registry
-      - ./data/offline:/data/offline:ro
-    networks:
-      - anomaly-detection-network
-    restart: 'no'
-
-
-
-
   # ============================================================================
   # PRODUCER - Sends telemetry data to Redpanda
   # ============================================================================
@@ -392,9 +363,68 @@ services:
       - anomaly-detection-network
 
   # ============================================================================
-  # TRAINING PIPELINE - Run Once (or manually on schedule)
+  # Qdrant
   # ============================================================================
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+    volumes:
+    - ./services/rag_service/qdrant_config.yaml:/qdrant/config/production.yaml
+    - qdrant_storage:/qdrant/storage # volume per persistenza dati
+    ports:
+      - "6333:6333"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/6333"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - anomaly-detection-network 
+
+  # ============================================================================
+  # Ingestion RAG
+  # ============================================================================
+
+  ingestion_rag:
+    build: 
+      context: .
+      dockerfile: ./services/rag_service/Dockerfile
+    profiles: [ "setup" ]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - ./rag_files:/rag_service/rag_files
+    networks:
+      - anomaly-detection-network
+
+  # ============================================================================
+  # MCP SERVER - RAG Pipeline + LLM
+  # ============================================================================
+  mcp_server_service:
+    build:
+      context: .
+      dockerfile: services/mcp_server_service/dockerfile
+    container_name: mcp_server
+    profiles: [ "online" ]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    ports:
+      - "8002:8000"
+    networks:
+      - anomaly-detection-network
+    restart: unless-stopped  
+    
 networks:
   anomaly-detection-network:
     driver: bridge
@@ -404,4 +434,6 @@ volumes:
   redis_data:
     driver: local
   mlflow_data:
+    driver: local
+  qdrant_storage:
     driver: local

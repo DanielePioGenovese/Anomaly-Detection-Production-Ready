@@ -92,8 +92,28 @@ inference = [
     "mlflow>=2.10.0",
     "feast[redis]>=0.30.0",
     "python-dotenv>=1.0.0",
+    "confluent-kafka>=2.11.1",
 ]
-
+rag-service = [
+    "fastembed>=0.7.4",
+    "langchain-community>=0.4.1",
+    "langchain-google-genai>=2.0,<3.0",
+    "langchain-qdrant>=1.1.0",
+    "langchain-text-splitters>=1.1.1",
+    "pydantic-settings>=2.11.0",
+]
+mcp-server-service = [
+    "confluent-kafka>=2.11.1",
+    "fastapi>=0.129.0",
+    "fastembed>=0.7.4",
+    "flashrank>=0.2.10",
+    "langchain-google-genai>=2.1.12",
+    "langchain-qdrant>=1.1.0",
+    "openai>=2.24.0",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.11.0",
+    "uvicorn>=0.34.0",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu126"
