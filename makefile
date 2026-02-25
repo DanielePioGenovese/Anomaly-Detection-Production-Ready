@@ -237,3 +237,6 @@ debug_training:
 
 offline_files:
 	uv run -m --group data-offline utils.create_offline_files
+
+debug_batch:
+	docker compose up --build batch_feature_pipeline

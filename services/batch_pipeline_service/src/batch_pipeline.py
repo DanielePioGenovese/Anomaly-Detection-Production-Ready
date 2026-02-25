@@ -15,13 +15,21 @@ Why "last window only"?
   • Writing only the latest window keeps the append fast and avoids re-computing
     history that Feast already has.
   • The `latest_window_per_entity` pattern (from job.py) picks exactly that window.
+
+Configuration
+─────────────
+  All runtime parameters are loaded from batch_config.yaml (path can be overridden
+  with the CONFIG_PATH env-var). Environment variables are NOT used for individual
+  settings — the YAML is the single source of truth.
 """
 
 import os
 import logging
+import yaml
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict
 
 from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
@@ -43,22 +51,74 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Settings:
-    datalake_dir:    str   # Source: processed industrial washer features (full history)
-    offline_dir:     str   # Destination: Feast offline store directory
-    spark_partitions: int  # Output parquet file count
+    # ── paths ─────────────────────────────────────────────────────────────────
+    datalake_dir:        str            # Source : processed industrial washer features
+    offline_dir:         str            # Destination : Feast offline store directory
+
+    # ── spark ─────────────────────────────────────────────────────────────────
+    spark_app_name:      str
+    spark_master:        str
+    spark_partitions:    int
+    spark_extra_configs: Dict[str, str] # arbitrary key/value pairs from spark.configs
+
+    # ── schema ────────────────────────────────────────────────────────────────
+    timestamp_column:    str            # name of the timestamp column in the datalake
+
+    # ── processing ────────────────────────────────────────────────────────────
+    # NOTE: the YAML ships with "overwrite" but the pipeline logic uses
+    # "append" for incremental daily runs.  The `YAML` value is respected
+    # as-is so you can switch between modes without touching source code.
+    write_mode:          str            # "append" keeps history; "overwrite" replaces all
 
 
-def load_settings() -> Settings:
+def load_settings(config_path: str = "config.yaml") -> Settings:
+    """
+    Load all runtime parameters from *config_path* (YAML).
+
+    The config_path itself can be overridden via the CONFIG_PATH env-var so
+    Docker / Kubernetes deployments can point to a mounted config file without
+    rebuilding the image:
+        CONFIG_PATH=/etc/batch/config.yaml python -m batch_pipeline
+    """
+    resolved = os.getenv("CONFIG_PATH", config_path)
+    logger.info(f"Loading configuration from: {resolved}")
+
+    if not Path(resolved).exists():
+        raise FileNotFoundError(
+            f"Configuration file not found: {resolved}\n"
+            "Create batch_config.yaml in the working directory or set CONFIG_PATH."
+        )
+
+    with open(resolved, "r") as fh:
+        cfg = yaml.safe_load(fh)
+
+    paths = cfg.get("paths",      {})
+    spark = cfg.get("spark",      {})
+    schema = cfg.get("schema",    {})
+    proc  = cfg.get("processing", {})
+
     return Settings(
-        datalake_dir=os.getenv(
-            "HISTORICAL_DIR",
+        # ── paths ──────────────────────────────────────────────────────────
+        datalake_dir=paths.get(
+            "data_warehouse_dir",
             "/app/data/processed_datasets/industrial_washer_normal_features",
         ),
-        offline_dir=os.getenv(
-            "OFFLINE_DIR",
+        offline_dir=paths.get(
+            "offline_store_dir",
             "/app/data/offline/machines_batch_features",
         ),
-        spark_partitions=int(os.getenv("SPARK_PARTITIONS", "8")),
+
+        # ── spark ──────────────────────────────────────────────────────────
+        spark_app_name=spark.get("app_name",   "batch-feature-pipeline-washing-machines"),
+        spark_master=spark.get("master",        "local[*]"),
+        spark_partitions=int(spark.get("partitions", 8)),
+        spark_extra_configs=spark.get("configs", {}),  # dict or empty {}
+
+        # ── schema ─────────────────────────────────────────────────────────
+        timestamp_column=schema.get("timestamp_column", "timestamp"),
+
+        # ── processing ─────────────────────────────────────────────────────
+        write_mode=proc.get("write_mode", "append"),
     )
 
 
@@ -166,19 +226,21 @@ def compute_last_daily_window(df: DataFrame, timestamp_col: str = "timestamp") -
     return result
 
 
-def write_offline(df: DataFrame, out_path: Path, partitions: int) -> None:
+def write_offline(df: DataFrame, out_path: Path, partitions: int, write_mode: str) -> None:
     """
     Write feature rows to the Feast offline store (partitioned parquet directory).
 
-    Write mode is 'append' so that previous days' windows are preserved in the
-    directory and Feast can serve point-in-time lookups over the full history.
+    The write mode is read from the YAML (processing.write_mode):
+      "append"    → daily incremental run, history is preserved  (recommended)
+      "overwrite" → full rewrite, useful for backfills / debugging
     """
     out_path.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Writing to offline store: {out_path}  (partitions={partitions})")
+    logger.info(f"Writing to offline store : {out_path}")
+    logger.info(f"  write_mode={write_mode}  partitions={partitions}")
     (
         df.repartition(partitions)
           .write
-          .mode("append")            # append: daily incremental, no history overwrite
+          .mode(write_mode)
           .parquet(str(out_path))
     )
     logger.info("  → Written successfully")
@@ -193,35 +255,56 @@ def main() -> None:
     logger.info("BATCH FEATURE PIPELINE  —  last daily window per machine")
     logger.info("=" * 70)
 
+    # 1. Load all settings from YAML ──────────────────────────────────────────
     s = load_settings()
+    logger.info(f"  datalake  : {s.datalake_dir}")
+    logger.info(f"  offline   : {s.offline_dir}")
+    logger.info(f"  timestamp : {s.timestamp_column}")
+    logger.info(f"  write_mode: {s.write_mode}")
 
-    # 1. Spark session
-    spark = (
+    # 2. Build Spark session — every value comes from the YAML ────────────────
+    builder = (
         SparkSession.builder
-        .appName("batch-feature-pipeline-washing-machines")
-        .master("local[*]")
+        .appName(s.spark_app_name)
+        .master(s.spark_master)
         .config("spark.sql.session.timeZone", "UTC")
-        .config("spark.sql.shuffle.partitions", str(max(8, s.spark_partitions * 2)))
-        .getOrCreate()
+        .config(
+            "spark.sql.shuffle.partitions",
+            str(max(8, s.spark_partitions * 2)),
+        )
     )
+
+    # Apply the open-ended spark.configs block from the YAML
+    # (e.g. spark.driver.memory, spark.executor.memory, …)
+    for key, value in s.spark_extra_configs.items():
+        builder = builder.config(key, str(value))
+        logger.info(f"  Spark config override: {key} = {value}")
+
+    spark = builder.getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
     logger.info("Spark session ready")
 
     try:
-        # 2. Read full datalake (all machines, all time)
+        # 3. Read full datalake (all machines, all time)
         df = read_inputs(spark, s.datalake_dir)
 
-        # 3. Compute feature for the last daily window only
-        batch_features = compute_last_daily_window(df, timestamp_col="timestamp")
+        # 4. Compute feature for the last daily window only
+        #    timestamp_col comes from schema.timestamp_column in the YAML
+        batch_features = compute_last_daily_window(df, timestamp_col=s.timestamp_column)
 
-        # 4. Preview
+        # 5. Preview
         logger.info("Sample output:")
         batch_features.show(10, truncate=False)
 
-        # 5. Append to offline store
-        write_offline(batch_features, Path(s.offline_dir), s.spark_partitions)
+        # 6. Write to offline store (write_mode comes from processing.write_mode)
+        write_offline(
+            batch_features,
+            Path(s.offline_dir),
+            s.spark_partitions,
+            s.write_mode,
+        )
 
-        # 6. Summary
+        # 7. Summary
         end_ts = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()
         logger.info("=" * 70)
         logger.info("PIPELINE COMPLETE")
