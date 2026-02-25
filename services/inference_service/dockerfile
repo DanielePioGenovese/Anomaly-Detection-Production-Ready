@@ -7,14 +7,14 @@ WORKDIR /inference_service
 
 # Install dependencies FIRST (caching layer)
 # Copy service-specific pyproject.toml
-COPY services/inference_service/pyproject.toml .
+COPY pyproject.toml uv.lock ./
+
 # No lock file yet, so perform sync without frozen
-RUN uv sync
+RUN uv sync --frozen --no-dev --group inference
 
 # Copy application code using paths relative to build context (project root)
 COPY services/inference_service/src/ src/
 COPY services/inference_service/config/ config/
-
 
 # Set Environment for imports
 # Add /inference_service (for config) and /inference_service/src (for preprocessor) to PYTHONPATH

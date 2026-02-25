@@ -43,12 +43,31 @@ services:
     environment:
       KAFKA_BROKERS: redpanda:9092
       KAFKA_SCHEMAREGISTRY_ENABLED: "true"
-      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
+      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8080
     depends_on:
       redpanda:
         condition: service_started
     networks:
       - anomaly-detection-network
+
+  # ============================================================================
+  # REDPANDA INIT - Create Topics
+  # ============================================================================
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: redpanda_init
+    depends_on:
+      redpanda:
+        condition: service_started
+    entrypoint: [ "/bin/bash", "-c" ]
+    command:
+      - |
+        sleep 5
+        rpk topic create telemetry-data --brokers redpanda:9092
+        rpk topic create predictions --brokers redpanda:9092
+    networks:
+      - anomaly-detection-network
+    restart: "no"
 
   # ============================================================================
   # REDIS - Online Feature Store
