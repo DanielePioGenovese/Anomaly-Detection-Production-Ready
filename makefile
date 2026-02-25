@@ -228,7 +228,7 @@ logs-train:
 
 # ---------
 
-debug: 
+debug_streaming: 
 	uv run -m --group data-offline utils.create_offline_files && \
 	docker compose up --build redis redpanda redpanda-console feature_store_apply feature_store_service streaming_service producer_service
 
@@ -240,3 +240,10 @@ offline_files:
 
 debug_batch:
 	docker compose up --build batch_feature_pipeline
+
+debug_inference:
+	docker compose up --build inference_service
+
+debug_inference_2:
+	docker compose build --no-cache inference_service
+

@@ -302,41 +302,12 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # INFERENCE SERVICE - Serving Predictions via FastAPI
-  # ============================================================================
-  inference_service:
-    build:
-      context: .
-      dockerfile: services/inference_service/dockerfile
-    container_name: inference_service
-    profiles: [ "online" ]
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      - PYTHONUNBUFFERED=1
-      - FEAST_REPO_PATH=/inference_service
-    volumes:
-      # Model Artifacts (Model + Preprocessor)
-      - ./data/models:/inference_service/data/models:ro
-      # Feast Registry and Configuration
-      # Mount to /data/registry because feature_store.yaml uses this absolute path
-      - ./data/registry:/data/registry:ro
-      - ./services/feature_store_service/src/feature_store.yaml:/inference_service/feature_store.yaml:ro
-
-    ports:
-      - "8001:8000"
-    networks:
-      - anomaly-detection-network
-    restart: unless-stopped
-
-  # ============================================================================
   # MLFLOW SERVER - Model Registry
   # ============================================================================
   mlflow:
     build:
       context: .
-      dockerfile: services/mlflow_service/Dockerfile
+      dockerfile: services/mlflow/Dockerfile
     container_name: mlflow
     command:
       - uv
@@ -361,6 +332,44 @@ services:
     restart: unless-stopped
     networks:
       - anomaly-detection-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5000" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================================================
+  # INFERENCE SERVICE - Serving Predictions via FastAPI
+  # ============================================================================
+  inference_service:
+    build:
+      context: .
+      dockerfile: services/inference_service/dockerfile
+    container_name: inference_service
+    profiles: [ "online" ]
+    depends_on:
+      redis:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+      redpanda:              # ← NEW: Wait for Redpanda
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FEAST_REPO_PATH=/inference_service
+    volumes:
+      # Model Artifacts (Model + Preprocessor)
+      - ./data/models:/inference_service/data/models:ro
+      # Feast Registry and Configuration
+      # Mount to /data/registry because feature_store.yaml uses this absolute path
+      - ./data/registry:/data/registry:ro
+      - ./services/feature_store_service/src/feature_store.yaml:/inference_service/feature_store.yaml:ro
+    ports:
+      - "8001:8000"
+    networks:
+      - anomaly-detection-network
+    restart: unless-stopped
 
   # ============================================================================
   # Qdrant

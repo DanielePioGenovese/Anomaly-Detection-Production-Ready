@@ -132,7 +132,7 @@ def main():
         # IsolationForest typically converges with a few thousand samples (paper: max_samples=256).
         # The subsampling strategy is theoretically justified and required to avoid RAM exhaustion.
         
-        # max_fit_rows = getattr(s, "max_fit_rows", 200_000)
+        max_fit_rows = getattr(s, "max_fit_rows", 200_000)
         if len(x_train) > max_fit_rows:
             logger.info(f"[TRAIN] Dataset total rows: {len(x_train)}; perform memory-aware subsampling and limit training set to {max_fit_rows} rows for fitting to avoid RAM saturation and preserve IsolationForest convergence properties")
             x_fit = x_train.sample(n=max_fit_rows, random_state=42)
