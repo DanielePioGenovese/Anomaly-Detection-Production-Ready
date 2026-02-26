@@ -1,27 +1,28 @@
 """
-with mlflow.start_run():
-    ├─  OPENS A RUN (creates a unique run_id)
-    ├─  LOGS EVERYTHING (metrics, parameters, model)
-    └─  CLOSES THE RUN (persists when exiting)
+Training pipeline — Datalake Only
+===================================
+Loads data exclusively from the datalake (parquet files).
+No Feast / feature-store integration.
 
-
-##  COSA VIENE REGISTRATO:
-Metrics (n_anomalies, anomaly_rate, latency, score_mean, etc)
-Parameters (training_number, contamination, score_distribution)
-Model (intera pipeline con preprocessing + Isolation Forest)
-Artifacts (thresholds.json, metrics.json)
-Metadata (run_id, start_time, end_time, status, duration)
+MLflow run records:
+    Metrics    — anomaly counts, rates, latency, score statistics,
+                 per-feature drift statistics
+    Parameters — contamination, training number, row counts
+    Artifacts  — thresholds.json, metrics.json
+    Model      — full sklearn Pipeline (preprocessing + IsolationForest)
 """
 
-import logging
-import time
 import json
-import numpy as np
+import logging
 import os
+import time
+
 import mlflow
+import numpy as np
 from mlflow import sklearn as mlflow_sklearn
+
 from config.settings import Settings
-from src.load_from_feast import DataManager
+from src.load_from_datalake import DataManager
 from src.model import ModelFactory
 from src.evaluator import ProductionMetricsCalculator
 from src.utils import create_and_log_signature
@@ -29,238 +30,246 @@ from src.utils import create_and_log_signature
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
 def get_training_number(output_dir: str) -> int:
-    metrics_history_file = os.path.join(output_dir, "training_history.json")
-    if not os.path.exists(metrics_history_file):
+    """Return the next training number by counting entries in training_history.json."""
+    history_file = os.path.join(output_dir, "training_history.json")
+    if not os.path.exists(history_file):
         return 1
     try:
-        with open(metrics_history_file, "r") as f:
-            history = json.load(f)
-            return len(history) + 1
-    except:
+        with open(history_file) as f:
+            return len(json.load(f)) + 1
+    except Exception:
         return 1
 
-def save_training_metrics(output_dir: str, training_number: int, metrics: dict, thresholds: dict):
-    # Ensure output directory exists with proper error handling
-    os.makedirs(output_dir, exist_ok=True)
-    
-    metrics_history_file = os.path.join(output_dir, "training_history.json")
-    metrics_by_training_file = os.path.join(output_dir, f"metrics_training_{training_number}.json")
 
-    training_data = {
+def save_training_metrics(
+    output_dir: str,
+    training_number: int,
+    metrics: dict,
+    thresholds: dict,
+) -> None:
+    """Persist per-run metrics and append to the cumulative training history."""
+    os.makedirs(output_dir, exist_ok=True)
+
+    run_data = {
         "training_number": training_number,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "metrics": metrics,
-        "thresholds": thresholds
+        "thresholds": thresholds,
     }
 
-    with open(metrics_by_training_file, "w") as f:
-        json.dump(training_data, f, indent=2)
-    logger.info(f"[SAVE] Saving Training Metrics: {metrics_by_training_file}")
+    # Per-run file
+    run_file = os.path.join(output_dir, f"metrics_training_{training_number}.json")
+    with open(run_file, "w") as f:
+        json.dump(run_data, f, indent=2)
+    logger.info(f"[SAVE] Run metrics saved: {run_file}")
 
+    # Cumulative history
+    history_file = os.path.join(output_dir, "training_history.json")
     history = []
-    if os.path.exists(metrics_history_file):
+    if os.path.exists(history_file):
         try:
-            with open(metrics_history_file, "r") as f:
+            with open(history_file) as f:
                 history = json.load(f)
-        except:
+        except Exception:
             history = []
-
-    history.append(training_data)
-
-    with open(metrics_history_file, "w") as f:
+    history.append(run_data)
+    with open(history_file, "w") as f:
         json.dump(history, f, indent=2)
-    logger.info(f"[SAVE] Updated Training History: {metrics_history_file}")
+    logger.info(f"[SAVE] Training history updated: {history_file}")
 
-def main():
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main() -> None:
     s = Settings()
     mlflow.set_tracking_uri(s.mlflow_tracking_uri)
     mlflow.set_experiment(s.mlflow_experiment_name)
 
     training_number = get_training_number(s.output_dir)
-    logger.info(f"[MAIN] Start Training #{training_number}")
-    print("\n" + "="*70)
-    print(f" TRAINING #{training_number}")
-    print("="*70 + "\n")
 
-    # 1. DATA
-    logger.info("[DATA] Loading data...")
-    dm = DataManager(s, training_number=training_number)  # ← Pass training_number for phase selection
+    print("\n" + "=" * 70)
+    print(f"  TRAINING #{training_number}  [Datalake Only]")
+    print("=" * 70 + "\n")
+    logger.info(f"[MAIN] Starting Training #{training_number}")
+
+    # ── 1. DATA ───────────────────────────────────────────────────────────────
+    logger.info("[DATA] Loading data from datalake...")
+    dm = DataManager(s)
     df = dm.load_data()
 
-    # Validate loaded data
     if df.empty:
         raise ValueError(
-            f"[DATA] CRITICAL ERROR : entity_df IS EMPTY! "
-            f"Check if the datalake path is correct: {s.entity_df_path}"
+            f"[DATA] Dataset is empty. "
+            f"Check datalake path: {s.entity_df_path}"
         )
 
-    logger.info("[DATA] Sorting dataset by timestamp; no train/test split applied...")
-    ts = s.event_timestamp_column
-    
-    # Validate timestamp column exists
-    if ts not in df.columns:
+    ts_col = s.event_timestamp_column
+    if ts_col not in df.columns:
         raise KeyError(
-            f"[DATA] ERROR: Timestamp Column '{ts}' not found in entity_df! "
-            f"Available Columns : {df.columns.tolist()}"
+            f"[DATA] Timestamp column '{ts_col}' not found. "
+            f"Available columns: {df.columns.tolist()}"
         )
-    
-    df = df.sort_values(ts).reset_index(drop=True)
-    logger.info(f"[DATA] Dataset total length: {len(df)} rows ordered chronologically")
 
-    drop_cols = [s.event_timestamp_column]  # Always drop timestamp (it's for ordering, not for training)
-    # Add any ID columns that shouldn't be used as features
-    id_cols = ["Machine_ID", "machine_id", "entity_id", "id"]
-    for col in id_cols:
-        if col in df.columns:
-            drop_cols.append(col)
-    
+    logger.info("[DATA] Sorting by timestamp (no train/test split)...")
+    df = df.sort_values(ts_col).reset_index(drop=True)
+    logger.info(f"[DATA] Total rows (chronological order): {len(df):,}")
+
+    # Drop timestamp and common ID columns — they are not model features
+    drop_cols = [ts_col]
+    for id_col in ("Machine_ID", "machine_id", "entity_id", "id"):
+        if id_col in df.columns:
+            drop_cols.append(id_col)
+
     x_train = df.drop(columns=[c for c in drop_cols if c in df.columns])
-    del df  # Free Memory: original df no longer needed
-    logger.info(f"[DATA] Selected Features: {x_train.shape[1]} columns")
-    logger.info(f"[DATA] Columns Features: {x_train.columns.tolist()}")
+    del df  # free original DataFrame
+    logger.info(f"[DATA] Feature columns ({x_train.shape[1]}): {x_train.columns.tolist()}")
 
-    # 2. PIPELINE
-    logger.info("[PIPELINE] Building  Pipeline...")
+    # ── 2. PIPELINE ───────────────────────────────────────────────────────────
     num_cols = x_train.select_dtypes(include=["number", "bool"]).columns.tolist()
     cat_cols = [c for c in x_train.columns if c not in num_cols]
-    logger.info(f"[PIPELINE] Numeric Columns : {len(num_cols)} | Categorical Columns: {len(cat_cols)}")
+    logger.info(
+        f"[PIPELINE] Numeric: {len(num_cols)} cols | Categorical: {len(cat_cols)} cols"
+    )
     pipe = ModelFactory.build_pipeline(num_cols, cat_cols, s)
 
     with mlflow.start_run():
-        # 3. TRAINING using a memory-aware subsample to prevent RAM exhaustion
-        # IsolationForest typically converges with a few thousand samples (paper: max_samples=256).
-        # The subsampling strategy is theoretically justified and required to avoid RAM exhaustion.
-        
-        max_fit_rows = getattr(s, "max_fit_rows", 200_000)
+
+        # ── 3. TRAINING ───────────────────────────────────────────────────────
+        # Subsample to avoid RAM exhaustion; IsolationForest converges well
+        # with a few thousand samples (paper recommends max_samples=256).
+        max_fit_rows = s.max_fit_rows
         if len(x_train) > max_fit_rows:
-            logger.info(f"[TRAIN] Dataset total rows: {len(x_train)}; perform memory-aware subsampling and limit training set to {max_fit_rows} rows for fitting to avoid RAM saturation and preserve IsolationForest convergence properties")
+            logger.info(
+                f"[TRAIN] Subsampling {len(x_train):,} → {max_fit_rows:,} rows "
+                f"(memory-aware cap)"
+            )
             x_fit = x_train.sample(n=max_fit_rows, random_state=42)
         else:
             x_fit = x_train
-            logger.info(f"[TRAIN] Dataset size {len(x_train)} rows — training on full dataset")
+            logger.info(f"[TRAIN] Training on full dataset ({len(x_train):,} rows)")
 
-        logger.info(f"[TRAIN] Fitting pipeline on {len(x_fit)} rows...")
-        start_train = time.time()
+        logger.info(f"[TRAIN] Fitting pipeline on {len(x_fit):,} rows...")
+        t_train = time.time()
         pipe.fit(x_fit)
-        train_time = time.time() - start_train
-        del x_fit  # Free the subsampled training set from RAM (release reference to fit subset)
+        train_time = time.time() - t_train
+        del x_fit
         logger.info(f"[TRAIN] Training completed in {train_time:.2f}s")
 
-        # 4. INFERENCE 
-        # Perform inference in chunks/batches to prevent RAM exhaustion
-        logger.info("[INFERENCE] Compute predictions and anomaly scores in chunks...")
-        infer_chunk_size = getattr(s, "inference_chunk_size", 50_000)
-        n_chunks = (len(x_train) + infer_chunk_size - 1) // infer_chunk_size
-        logger.info(f"[INFERENCE] {len(x_train)} rows split into {n_chunks} chunks of {infer_chunk_size}")
+        # ── 4. INFERENCE (chunked) ────────────────────────────────────────────
+        chunk_size = s.inference_chunk_size
+        n_chunks = (len(x_train) + chunk_size - 1) // chunk_size
+        logger.info(
+            f"[INFERENCE] {len(x_train):,} rows → {n_chunks} chunk(s) of {chunk_size:,}"
+        )
 
-        start_inference = time.time()
+        t_infer = time.time()
         pred_parts, score_parts, pre_parts = [], [], []
 
-        for i in range(0, len(x_train), infer_chunk_size):
-            chunk = x_train.iloc[i : i + infer_chunk_size]
+        for i in range(0, len(x_train), chunk_size):
+            chunk = x_train.iloc[i : i + chunk_size]
             chunk_pre = pipe.named_steps["pre"].transform(chunk)
             pred_parts.append(pipe.predict(chunk))
             score_parts.append(pipe.named_steps["model"].score_samples(chunk_pre))
             pre_parts.append(chunk_pre)
-            chunk_idx = i // infer_chunk_size + 1
-            logger.info(f"[INFERENCE] Chunk {chunk_idx}/{n_chunks} processed: ({len(chunk)} rows)")
+            idx = i // chunk_size + 1
+            logger.info(f"[INFERENCE] Chunk {idx}/{n_chunks} — {len(chunk):,} rows")
 
-        pred_train   = np.concatenate(pred_parts)
-        scores_train = np.concatenate(score_parts)
+        predictions  = np.concatenate(pred_parts)
+        scores       = np.concatenate(score_parts)
         x_train_pre  = np.concatenate(pre_parts)
         del pred_parts, score_parts, pre_parts
 
-        inference_time = time.time() - start_inference
-        latency = (inference_time * 1000) / len(x_train)
-        logger.info(f"[INFERENCE] Inference completed in {inference_time:.2f}s")
-        logger.info(f"[INFERENCE] Mean latency: {latency:.3f} ms/record")
+        infer_time = time.time() - t_infer
+        latency_ms = (infer_time * 1000) / len(x_train)
+        logger.info(
+            f"[INFERENCE] Completed in {infer_time:.2f}s "
+            f"| mean latency: {latency_ms:.3f} ms/record"
+        )
 
-        # 5. EVALUATION
-        logger.info("[EVAL] Compute metrics...")
+        # ── 5. EVALUATION ─────────────────────────────────────────────────────
         evaluator = ProductionMetricsCalculator(s.training.contamination)
-        metrics = evaluator.calculate_metrics(x_train_pre, pred_train, scores_train, latency, "training")
+        metrics   = evaluator.calculate_metrics(
+            x_train_pre, predictions, scores, latency_ms, "training"
+        )
+        thresholds = evaluator.get_thresholds(scores, predictions)
 
-        # 6. THRESHOLDS
-        logger.info("[THRESHOLDS] Threshold Extraction...")
-        thresholds = evaluator.get_thresholds(scores_train, pred_train)
+        logger.info(
+            f"[EVAL] Anomalies: {metrics['n_anomalies_detected']} "
+            f"({metrics['anomaly_percentage']:.2f}%) | "
+            f"score p50: {metrics['score_distribution']['p50']:.4f}"
+        )
+        logger.info(
+            f"[THRESHOLDS] p01={thresholds['p01']:.4f}  "
+            f"p05={thresholds['p05']:.4f}  p50={thresholds['p50']:.4f}"
+        )
 
-        logger.info(f"[EVAL] Anomalies Detected: {metrics['n_anomalies_detected']} ({metrics['anomaly_percentage']:.2f}%)")
-        logger.info(f"[EVAL] Score distribution p50: {metrics['score_distribution']['p50']:.4f}")
-        logger.info(f"[THRESHOLDS] p01: {thresholds['p01']:.4f}, p05: {thresholds['p05']:.4f}, p50: {thresholds['p50']:.4f}")
-
-        # 7. LOGGING METRICHE
-        logger.info("[MLFLOW] Metrics Log...")
+        # ── 6. MLFLOW — METRICS ───────────────────────────────────────────────
         mlflow.log_metrics({
             "n_anomalies_detected": metrics["n_anomalies_detected"],
-            "anomaly_rate": metrics["anomaly_percentage"],
-            "latency_ms": metrics["inference_latency_ms"],
-            "score_mean": metrics["score_statistics"]["mean"],
-            "score_std": metrics["score_statistics"]["std"],
-            "score_min": metrics["score_statistics"]["min"],
-            "score_max": metrics["score_statistics"]["max"],
-            "training_number": training_number,
-            "dataset_size": len(x_train),
-            "fit_rows": min(len(x_train), getattr(s, "max_fit_rows", 200_000)),
+            "anomaly_rate":         metrics["anomaly_percentage"],
+            "latency_ms":           metrics["inference_latency_ms"],
+            "score_mean":           metrics["score_statistics"]["mean"],
+            "score_std":            metrics["score_statistics"]["std"],
+            "score_min":            metrics["score_statistics"]["min"],
+            "score_max":            metrics["score_statistics"]["max"],
+            "training_number":      training_number,
+            "dataset_size":         len(x_train),
+            "fit_rows":             min(len(x_train), max_fit_rows),
         })
 
-        # Feature statistics logging for drift monitoring
-        logger.info("[MLFLOW] Log feature statistics for drift monitoring...")
+        # Per-feature drift statistics
         feature_stats = {}
         for col in x_train.columns:
             if x_train[col].notna().any():
                 feature_stats[f"feat_{col}_mean"] = float(x_train[col].mean())
-                feature_stats[f"feat_{col}_std"] = float(x_train[col].std())
-                feature_stats[f"feat_{col}_p25"] = float(x_train[col].quantile(0.25))
-                feature_stats[f"feat_{col}_p75"] = float(x_train[col].quantile(0.75))
+                feature_stats[f"feat_{col}_std"]  = float(x_train[col].std())
+                feature_stats[f"feat_{col}_p25"]  = float(x_train[col].quantile(0.25))
+                feature_stats[f"feat_{col}_p75"]  = float(x_train[col].quantile(0.75))
         mlflow.log_metrics(feature_stats)
 
-        # Log parametri
-        mlflow.log_param("score_distribution", json.dumps(metrics["score_distribution"]))
-        mlflow.log_param("training_number", str(training_number))
-        mlflow.log_param("contamination", str(s.training.contamination))
-        mlflow.log_param("max_fit_rows", str(getattr(s, "max_fit_rows", 200_000)))
-        mlflow.log_param("inference_chunk_size", str(getattr(s, "inference_chunk_size", 50_000)))
-        mlflow.log_param("feast_chunk_size", str(getattr(s, "feast_chunk_size", 50_000)))
+        # ── 7. MLFLOW — PARAMETERS ────────────────────────────────────────────
+        mlflow.log_param("score_distribution",    json.dumps(metrics["score_distribution"]))
+        mlflow.log_param("training_number",       str(training_number))
+        mlflow.log_param("contamination",         str(s.training.contamination))
+        mlflow.log_param("max_fit_rows",          str(max_fit_rows))
+        mlflow.log_param("inference_chunk_size",  str(chunk_size))
+        mlflow.log_param("data_source",           "datalake_only")
 
-        # Signature
-        logger.info("[MLFLOW] Signature Creation...")
+        # ── 8. MLFLOW — SIGNATURE + MODEL ─────────────────────────────────────
         signature = create_and_log_signature(x_train, pipe)
-
-        # 8. SAVING ARTIFACTS with log_dict (no intermediate filesystem)
-        logger.info("[ARTIFACTS] Saving artifacts to MLflow...")
-
-        # Thresholds
-        mlflow.log_dict(thresholds, "thresholds.json")
-        logger.info("[SAVE] Thresholds saved to MLflow: thresholds.json")
-
-        # Metrics
-        mlflow.log_dict(metrics, "metrics.json")
-        logger.info("[SAVE] Metrics savedt to MLflow: metrics.json")
-
-        # Save locally for compatibility
-        os.makedirs(s.output_dir, exist_ok=True)
-        thresholds_file = os.path.join(s.output_dir, "thresholds.json")
-        with open(thresholds_file, "w") as f:
-            json.dump(thresholds, f, indent=2)
-
-        # 9. SAVING MODEL
-        logger.info("[MLFLOW] Log pipeline completed...")
         mlflow_sklearn.log_model(
             pipe,
             "model",
             signature=signature,
-            registered_model_name=s.mlflow_model_name
+            registered_model_name=s.mlflow_model_name,
         )
-        logger.info(f"[MLFLOW] Pipeline saved to MLflow (version {training_number})")
+        logger.info(f"[MLFLOW] Pipeline logged (training #{training_number})")
 
-        # Saving metrics to local history
+        # ── 9. MLFLOW — ARTIFACTS ─────────────────────────────────────────────
+        mlflow.log_dict(thresholds, "thresholds.json")
+        mlflow.log_dict(metrics,    "metrics.json")
+
+        # Also write thresholds locally for downstream services
+        os.makedirs(s.output_dir, exist_ok=True)
+        with open(os.path.join(s.output_dir, "thresholds.json"), "w") as f:
+            json.dump(thresholds, f, indent=2)
+
+        # ── 10. LOCAL HISTORY ─────────────────────────────────────────────────
         save_training_metrics(s.output_dir, training_number, metrics, thresholds)
 
     logger.info(f"[MAIN] Training #{training_number} completed successfully!")
-    print("\n" + "="*70)
-    print(f" TRAINING #{training_number} COMPLETED SUCCESSFULLY!")
-    print("="*70 + "\n")
+    print("\n" + "=" * 70)
+    print(f"  TRAINING #{training_number} COMPLETED SUCCESSFULLY!")
+    print("=" * 70 + "\n")
+
 
 if __name__ == "__main__":
     main()

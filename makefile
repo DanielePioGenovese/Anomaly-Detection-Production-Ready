@@ -228,8 +228,9 @@ logs-train:
 
 # ---------
 
+# First Training
 debug_training:
-	docker compose up --build feature_store_service mlflow training_service
+	docker compose up --build mlflow training_service
 
 offline_files:
 	uv run -m --group data-offline utils.create_offline_files
@@ -248,3 +249,6 @@ debug_all:
 	uv run -m --group data-offline utils.create_offline_files && \
 	docker compose up --build redis mlflow redpanda redpanda-console feature_store_apply feature_store_service streaming_service inference_service producer_service -d
 
+debug_streaming:
+		uv run -m --group data-offline utils.create_offline_files && \
+		docker compose up --build redpanda redis redpanda-console feature_store_apply feature_store_service streaming_service producer_service -d

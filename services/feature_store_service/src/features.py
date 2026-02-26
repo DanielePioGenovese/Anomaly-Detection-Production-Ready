@@ -53,18 +53,6 @@ machine_streaming_features = FeatureView(
     entities=[machine],
     ttl=timedelta(hours=12),
     schema=[
-        # ── Raw sensor readings ───────────────────────────────────────────────
-        Field(name="Cycle_Phase_ID",         dtype=Int64),
-        Field(name="Current_L1",             dtype=Float32),
-        Field(name="Current_L2",             dtype=Float32),
-        Field(name="Current_L3",             dtype=Float32),
-        Field(name="Voltage_L_L",            dtype=Float32),
-        Field(name="Water_Temp_C",           dtype=Float32),
-        Field(name="Motor_RPM",              dtype=Float32),
-        Field(name="Water_Flow_L_min",       dtype=Float32),
-        Field(name="Vibration_mm_s",         dtype=Float32),
-        Field(name="Water_Pressure_Bar",     dtype=Float32),
-
         # ── Streaming pipeline features (PySpark rolling windows) ─────────────
         # Intermediate derived scalar: (max(L1,L2,L3) - min(L1,L2,L3)) / mean(L1,L2,L3)
         Field(name="Current_Imbalance_Ratio",           dtype=Float32),

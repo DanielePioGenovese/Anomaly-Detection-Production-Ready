@@ -162,17 +162,6 @@ def run_streaming_service():
             "Machine_ID":                        int(data.get("Machine_ID", 0)),
             # Timestamp
             "timestamp":                         ts,
-            # Raw sensor readings (match schema in features.py)
-            "Cycle_Phase_ID":                    int(data.get("Cycle_Phase_ID", 0)),
-            "Current_L1":                        _safe_float(l1),
-            "Current_L2":                        _safe_float(l2),
-            "Current_L3":                        _safe_float(l3),
-            "Voltage_L_L":                       _safe_float(data.get("Voltage_L_L")),
-            "Water_Temp_C":                      _safe_float(data.get("Water_Temp_C")),
-            "Motor_RPM":                         _safe_float(data.get("Motor_RPM")),
-            "Water_Flow_L_min":                  _safe_float(data.get("Water_Flow_L_min")),
-            "Vibration_mm_s":                    _safe_float(vibration),
-            "Water_Pressure_Bar":                _safe_float(data.get("Water_Pressure_Bar")),
             # Derived / streaming features
             "Current_Imbalance_Ratio":           float(imbalance_ratio),
             "Vibration_RollingMax_10min":        float(vibration_rolling_max),

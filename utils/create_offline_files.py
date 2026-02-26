@@ -53,18 +53,6 @@ STREAM_SCHEMA = pa.schema([
     pa.field("Machine_ID",                      pa.int64()),
     pa.field("timestamp",                       pa.timestamp("us", tz="UTC")),
 
-    # ── Raw sensor readings ───────────────────────────────────────────────────
-    pa.field("Cycle_Phase_ID",                  pa.int64()),
-    pa.field("Current_L1",                      pa.float32()),
-    pa.field("Current_L2",                      pa.float32()),
-    pa.field("Current_L3",                      pa.float32()),
-    pa.field("Voltage_L_L",                     pa.float32()),
-    pa.field("Water_Temp_C",                    pa.float32()),
-    pa.field("Motor_RPM",                       pa.float32()),
-    pa.field("Water_Flow_L_min",                pa.float32()),
-    pa.field("Vibration_mm_s",                  pa.float32()),
-    pa.field("Water_Pressure_Bar",              pa.float32()),
-
     # ── Streaming pipeline features (rolling windows) ─────────────────────────
     pa.field("Current_Imbalance_Ratio",         pa.float32()),
     pa.field("Vibration_RollingMax_10min",      pa.float32()),
