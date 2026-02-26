@@ -281,10 +281,13 @@ services:
       - PYTHONUNBUFFERED=1
       - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
       - FEAST_REPO_PATH=/streaming_service
+      - ENTITYDF_DIR=/data/entity_df
+      - DATALAKE_FORMAT=parquet
     volumes:
       - ./data/models:/streaming_service/data/models:ro
       - ./data/registry:/data/registry
       - ./data/offline:/data/offline 
+      - ./data/entity_df:/data/entity_df
     networks:
       - anomaly-detection-network
     restart: unless-stopped

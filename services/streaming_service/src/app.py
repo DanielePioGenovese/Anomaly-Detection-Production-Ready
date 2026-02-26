@@ -9,6 +9,7 @@ import pandas as pd
 from feast import FeatureStore
 from feast.data_source import PushMode
 from quixstreams import Application
+from quixstreams.sinks.community.file.local import LocalFileSink
 
 from config.config import Config
 
@@ -105,8 +106,14 @@ def run_streaming_service():
     sdf = sdf.filter(lambda x: x is not None)
 
     # ------------------------------------------------------------------
-    # 4. Feature engineering + Feast push
+    # 4a. Raw sink — persist all sensor fields to local datalake before
+    #     any feature engineering (mirrors processor.py Branch 1 pattern)
     # ------------------------------------------------------------------
+    raw_sink = LocalFileSink(
+        directory=os.getenv("DATALAKE_DIR", "/data/entity_df"),
+        format=os.getenv("DATALAKE_FORMAT", "parquet"),
+    )
+    sdf.sink(raw_sink)
     def _safe_float(value, default: float = 0.0) -> float:
         """Cast to float and replace NaN/Inf with a safe default."""
         try:
