@@ -5109,14 +5109,8 @@ inference = [
 ]
 ingestion = [
     { name = "confluent-kafka" },
-    { name = "joblib" },
-    { name = "numpy" },
     { name = "pandas" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
     { name = "quixstreams" },
-    { name = "scikit-learn" },
-    { name = "scipy" },
 ]
 mcp-server-service = [
     { name = "confluent-kafka" },
@@ -5203,14 +5197,8 @@ inference = [
 ]
 ingestion = [
     { name = "confluent-kafka", specifier = ">=2.4,<2.12" },
-    { name = "joblib", specifier = ">=1.4.0" },
-    { name = "numpy", specifier = ">=2.4.1" },
-    { name = "pandas", specifier = ">=2.2.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pandas", specifier = ">=2.3.3" },
     { name = "quixstreams", specifier = ">=3.0.0" },
-    { name = "scikit-learn", specifier = ">=1.8.0" },
-    { name = "scipy", specifier = ">=1.17.0" },
 ]
 mcp-server-service = [
     { name = "confluent-kafka", specifier = ">=2.11.1" },
