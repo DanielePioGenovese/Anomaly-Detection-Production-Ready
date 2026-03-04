@@ -114,7 +114,7 @@ class FeastPusher:
 def to_vibration_features(row: dict) -> dict:
     """Map 10-min window output → Feast schema (vibration features only)."""
     return {
-        "Machine_ID": row.get("Machine_ID", 'Hello'),
+        "Machine_ID": row.get("Machine_ID"),
         "timestamp": row["latest_timestamp"],
         "Vibration_RollingMax_10min": row["Vibration_RollingMax_10min"],
     }
@@ -122,14 +122,13 @@ def to_vibration_features(row: dict) -> dict:
 
 def to_current_features(row: dict) -> dict:
     """Map 5-min window output → Feast schema (current imbalance features only)."""
-    
     return {
-        "Machine_ID": row.get("Machine_ID", None),
+        "Machine_ID": row.get("Machine_ID"),
         "timestamp": row["latest_timestamp"],
         "Current_Imbalance_RollingMean_5min": row["Current_Imbalance_RollingMean_5min"],
     }
 
-
+    
 def compute_current_imbalance_ratio(record: dict) -> float:
     """
     Instantaneous 3-phase current imbalance scalar.
@@ -192,9 +191,6 @@ def main() -> None:
     # Derived feature — computed per record before entering any window
     sdf['Current_Imbalance_Ratio'] = sdf.apply(compute_current_imbalance_ratio)
 
-    logger.info('before')
-    logger.info(sdf.print(metadata=True))
-
     # Shared push handler
     def _push(record: dict[str, Any]) -> None:
         try:
@@ -202,39 +198,60 @@ def main() -> None:
         except Exception as e:
             logger.exception(f'Error loading data to Feast: {e}')
 
+    # FIX: Machine_ID=Latest("Machine_ID") is now included in both aggregations
+    # so it is carried through to the intermediate topics and the joined row.
     sdf_10min = (
-        sdf.sliding_window(duration_ms=timedelta(minutes=10))
+        sdf.sliding_window(duration_ms=timedelta(minutes=10), grace_ms=timedelta(minutes=2))
         .agg(
+            Machine_ID=Latest("Machine_ID"),          
             Vibration_RollingMax_10min=Max("Vibration_mm_s"),
             latest_timestamp=Latest("timestamp"),
         )
         .current()
     )
-    sdf_10min.to_topic(topic_10min)  # materialize
+    sdf_10min.to_topic(topic_10min)
 
     sdf_5min = (
-        sdf.sliding_window(duration_ms=timedelta(minutes=5))
+        sdf.sliding_window(duration_ms=timedelta(minutes=5), grace_ms=timedelta(minutes=2))
+        
         .agg(
+            Machine_ID=Latest("Machine_ID"),          
             Current_Imbalance_RollingMean_5min=Mean("Current_Imbalance_Ratio"),
+            Current_Imbalance_Ratio=Latest("Current_Imbalance_Ratio"),
             latest_timestamp=Latest("timestamp"),
         )
         .current()
     )
-    sdf_5min.to_topic(topic_5min)   # materialize
+    sdf_5min.to_topic(topic_5min)
 
     sdf_left  = app.dataframe(topic_10min)
     sdf_right = app.dataframe(topic_5min)
 
     sdf_joined = sdf_left.join_asof(
         right=sdf_right,
-        how="left",                    # emit even if no 5min match yet
-        on_merge="keep-left",          
+        how="left",
+        on_merge="keep-left",
         grace_ms=timedelta(minutes=15),
     )
 
-    sdf_joined.apply(_push)
+    logger.info('sdf_joined created')
 
-    logger.info(sdf.print(metadata=True))
+    def push_to_feast(row):
+
+        raw_ts = row['latest_timestamp']
+        utc_ts = _parse_iso8601(raw_ts).isoformat()
+
+        record = {
+            "Machine_ID": row["Machine_ID"],
+            "timestamp": utc_ts,
+            "Current_Imbalance_Ratio": row.get("Current_Imbalance_Ratio"),
+            "Vibration_RollingMax_10min": row.get("Vibration_RollingMax_10min"),
+            "Current_Imbalance_RollingMean_5min": row.get("Current_Imbalance_RollingMean_5min")
+        }
+        logger.info(f"Pushing to Feast: {record}")
+        _push(record)
+
+    sdf_joined.apply(push_to_feast)
 
     logger.info('Pipelines configured — starting app')
     app.run()

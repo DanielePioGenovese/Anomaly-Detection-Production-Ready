@@ -12,7 +12,7 @@ class Config:
     PUSH_SOURCE_NAME = 'washing_stream_push'
     PUSH_TO = 'online_and_offline'
 
-    AUTO_OFFSET_RESET = "earliest"
+    AUTO_OFFSET_RESET = "latest"
 
     STATE_DIR: str = "/tmp/quix_state"
 

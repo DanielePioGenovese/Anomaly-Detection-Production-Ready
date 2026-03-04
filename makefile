@@ -263,3 +263,11 @@ debug_all:
 debug_streaming:
 		uv run -m utils.create_offline_files && \
 		docker compose up --build redpanda redis redpanda-console feature_store_apply feature_store_service batch_feature_pipeline feast_materialize streaming_service producer_service -d
+
+debug_quix:
+	uv run -m utils.create_offline_files && \
+	docker compose up --build redis redpanda redpanda-console feature_store_service streaming_service -d
+
+debug_stream:
+	docker compose up --build producer_service -d
+
