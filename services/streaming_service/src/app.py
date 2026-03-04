@@ -8,6 +8,7 @@ import requests
 from config.config import Config
 from typing import Any
 
+
 from quixstreams.dataframe.windows import (
     Latest,
     Mean,
@@ -38,17 +39,25 @@ def timestamp_setter(record: dict) -> int:
     return int(dt.timestamp() * 1000)
 
 
-def timestamp_extractor(value: Any, kafka_ts_ms: float) -> int:
+from quixstreams.models import TimestampType
+
+def timestamp_extractor(
+    value: Any,
+    headers: Any,
+    timestamp: float,
+    timestamp_type: TimestampType
+) -> int:
     """
-    QuixStreams timestamp extractor — tells the windowing engine which clock to use.
-    Prefers the event timestamp embedded in the message; falls back to the Kafka broker timestamp.
+    QuixStreams timestamp extractor.
+    Prefers the event timestamp in the message; falls back to the Kafka broker timestamp.
     """
     try:
         if isinstance(value, dict) and 'timestamp' in value:
             return timestamp_setter(value)
     except Exception as e:
         logger.error(f'Timestamp extractor error, falling back to Kafka timestamp: {e}')
-    return int(kafka_ts_ms)
+
+    return int(timestamp)
 
 
 # ----------------------------
@@ -72,7 +81,6 @@ class FeastPusher:
                 r = self._session.get(f"{self._base_url}/health", timeout=2)
                 if r.status_code == 200:
                     logger.info("Feast feature server is ready")
-                    # Renew session to avoid stale connection state
                     self._session.close()
                     self._session = requests.Session()
                     return
@@ -83,7 +91,6 @@ class FeastPusher:
 
     def push(self, record: dict[str, Any]) -> None:
         """Push a single feature record to the online (and offline) store."""
-        # Feast expects each field as a single-element list
         df = {k: [v] for k, v in record.items()}
         payload = {
             'push_source_name': self._push_source_name,
@@ -105,21 +112,21 @@ class FeastPusher:
 # ----------------------------
 
 def to_vibration_features(row: dict) -> dict:
-    """Select and type-cast vibration window fields for the Feast push payload."""
+    """Map 10-min window output → Feast schema (vibration features only)."""
     return {
-        "Machine_ID": int(row["Machine_ID"]),
-        "timestamp": str(row["timestamp"]),
-        "Vibration_RollingMax_10min": float(row["Vibration_RollingMax_10min"]),
+        "Machine_ID": row.get("Machine_ID", 'Hello'),
+        "timestamp": row["latest_timestamp"],
+        "Vibration_RollingMax_10min": row["Vibration_RollingMax_10min"],
     }
 
 
-def to_imbalance_features(row: dict) -> dict:
-    """Select and type-cast current-imbalance window fields for the Feast push payload."""
+def to_current_features(row: dict) -> dict:
+    """Map 5-min window output → Feast schema (current imbalance features only)."""
+    
     return {
-        "Machine_ID": int(row["Machine_ID"]),
-        "timestamp": str(row["timestamp"]),
-        "Current_Imbalance_Ratio": float(row["Current_Imbalance_Ratio"]),
-        "Current_Imbalance_RollingMean_5min": float(row["Current_Imbalance_RollingMean_5min"]),
+        "Machine_ID": row.get("Machine_ID", None),
+        "timestamp": row["latest_timestamp"],
+        "Current_Imbalance_RollingMean_5min": row["Current_Imbalance_RollingMean_5min"],
     }
 
 
@@ -158,7 +165,6 @@ def main() -> None:
         push_to=Config.PUSH_TO
     )
 
-    # Hold startup until the Feast feature server is reachable
     feast.wait_until_ready()
 
     app = Application(
@@ -168,12 +174,14 @@ def main() -> None:
         state_dir=Config.STATE_DIR
     )
 
-    # Use the event timestamp embedded in each message for windowing
     topic = app.topic(
         Config.TOPIC_TELEMETRY,
         value_deserializer="json",
         timestamp_extractor=timestamp_extractor,
     )
+
+    topic_10min = app.topic("features-10min", value_serializer="json")
+    topic_5min  = app.topic("features-5min",  value_serializer="json")
 
     # Persist every raw message to the data lake before any transformation
     raw_sink = LocalFileSink(directory=Config.DATALAKE_DIR, format=Config.DATALAKE_FORMAT)
@@ -184,41 +192,52 @@ def main() -> None:
     # Derived feature — computed per record before entering any window
     sdf['Current_Imbalance_Ratio'] = sdf.apply(compute_current_imbalance_ratio)
 
-    # 10-minute sliding window: rolling max of raw vibration per machine
-    windowed_vibration = (
-        sdf.sliding_window(duration_ms=timedelta(seconds=600))
-        .agg(
-            Machine_ID=Latest("Machine_ID"),
-            timestamp=Latest("timestamp"),
-            Vibration_RollingMax_10min=Max('Vibration_mm_s'),
-        )
-        .current()
-    )
+    logger.info('before')
+    logger.info(sdf.print(metadata=True))
 
-    # 5-minute sliding window: rolling mean of the imbalance ratio per machine
-    windowed_imbalance = (
-        sdf.sliding_window(duration_ms=timedelta(seconds=300))
-        .agg(
-            Machine_ID=Latest("Machine_ID"),
-            timestamp=Latest("timestamp"),
-            Current_Imbalance_Ratio=Latest("Current_Imbalance_Ratio"),  # carry forward for mapper
-            Current_Imbalance_RollingMean_5min=Mean('Current_Imbalance_Ratio'),
-        )
-        .current()
-    )
-
+    # Shared push handler
     def _push(record: dict[str, Any]) -> None:
         try:
             feast.push(record)
         except Exception as e:
-            logger.exception(f'Error loading data to Feast {e}')
+            logger.exception(f'Error loading data to Feast: {e}')
 
-    # Map each window output to its Feast schema, then push to the feature store
-    windowed_vibration.apply(to_vibration_features).update(_push)
-    windowed_imbalance.apply(to_imbalance_features).update(_push)
+    sdf_10min = (
+        sdf.sliding_window(duration_ms=timedelta(minutes=10))
+        .agg(
+            Vibration_RollingMax_10min=Max("Vibration_mm_s"),
+            latest_timestamp=Latest("timestamp"),
+        )
+        .current()
+    )
+    sdf_10min.to_topic(topic_10min)  # materialize
 
+    sdf_5min = (
+        sdf.sliding_window(duration_ms=timedelta(minutes=5))
+        .agg(
+            Current_Imbalance_RollingMean_5min=Mean("Current_Imbalance_Ratio"),
+            latest_timestamp=Latest("timestamp"),
+        )
+        .current()
+    )
+    sdf_5min.to_topic(topic_5min)   # materialize
+
+    sdf_left  = app.dataframe(topic_10min)
+    sdf_right = app.dataframe(topic_5min)
+
+    sdf_joined = sdf_left.join_asof(
+        right=sdf_right,
+        how="left",                    # emit even if no 5min match yet
+        on_merge="keep-left",          
+        grace_ms=timedelta(minutes=15),
+    )
+
+    sdf_joined.apply(_push)
+
+    logger.info(sdf.print(metadata=True))
+
+    logger.info('Pipelines configured — starting app')
     app.run()
-
 
 if __name__ == '__main__':
     main()
