@@ -16,7 +16,5 @@ class Config:
 
     STATE_DIR: str = "/tmp/quix_state"
 
-    DATALAKE_DIR: str = "/app/datalake"
-
-    DATALAKE_FORMAT: str = "parquet" 
-
+    ENTITY_DF = '/data/entity_df'
+    ENTITY_DF_FORMAT = 'parquet'

@@ -163,7 +163,6 @@ def main() -> None:
         push_source_name=Config.PUSH_SOURCE_NAME,
         push_to=Config.PUSH_TO
     )
-
     feast.wait_until_ready()
 
     app = Application(
@@ -179,79 +178,85 @@ def main() -> None:
         timestamp_extractor=timestamp_extractor,
     )
 
-    topic_10min = app.topic("features-10min", value_serializer="json")
-    topic_5min  = app.topic("features-5min",  value_serializer="json")
+    # Single intermediate topic for BOTH windows (tagged by type)
+    topic_windows = app.topic("features-windows", value_serializer="json")
 
-    # Persist every raw message to the data lake before any transformation
-    raw_sink = LocalFileSink(directory=Config.DATALAKE_DIR, format=Config.DATALAKE_FORMAT)
+    raw_sink = LocalFileSink(directory=Config.ENTITY_DF, format=Config.ENTITY_DF_FORMAT)
 
     sdf = app.dataframe(topic)
     sdf.sink(raw_sink)
 
-    # Derived feature — computed per record before entering any window
     sdf['Current_Imbalance_Ratio'] = sdf.apply(compute_current_imbalance_ratio)
 
-    # Shared push handler
-    def _push(record: dict[str, Any]) -> None:
-        try:
-            feast.push(record)
-        except Exception as e:
-            logger.exception(f'Error loading data to Feast: {e}')
-
-    # FIX: Machine_ID=Latest("Machine_ID") is now included in both aggregations
-    # so it is carried through to the intermediate topics and the joined row.
+    # ── 10-min window ──────────────────────────────────────────────────────────
     sdf_10min = (
         sdf.sliding_window(duration_ms=timedelta(minutes=10), grace_ms=timedelta(minutes=2))
         .agg(
-            Machine_ID=Latest("Machine_ID"),          
+            Machine_ID=Latest("Machine_ID"),
             Vibration_RollingMax_10min=Max("Vibration_mm_s"),
             latest_timestamp=Latest("timestamp"),
         )
         .current()
     )
-    sdf_10min.to_topic(topic_10min)
+    sdf_10min["window_type"] = "10min"
+    sdf_10min.to_topic(topic_windows)
 
+    # ── 5-min window ───────────────────────────────────────────────────────────
     sdf_5min = (
         sdf.sliding_window(duration_ms=timedelta(minutes=5), grace_ms=timedelta(minutes=2))
-        
         .agg(
-            Machine_ID=Latest("Machine_ID"),          
+            Machine_ID=Latest("Machine_ID"),
             Current_Imbalance_RollingMean_5min=Mean("Current_Imbalance_Ratio"),
             Current_Imbalance_Ratio=Latest("Current_Imbalance_Ratio"),
             latest_timestamp=Latest("timestamp"),
         )
         .current()
     )
-    sdf_5min.to_topic(topic_5min)
+    sdf_5min["window_type"] = "5min"
+    sdf_5min.to_topic(topic_windows)
 
-    sdf_left  = app.dataframe(topic_10min)
-    sdf_right = app.dataframe(topic_5min)
+    # ── Stateful merge + Feast push ────────────────────────────────────────────
+    sdf_merged = app.dataframe(topic_windows)
 
-    sdf_joined = sdf_left.join_asof(
-        right=sdf_right,
-        how="left",
-        on_merge="keep-left",
-        grace_ms=timedelta(minutes=15),
-    )
+    def merge_windows(record: dict, state) -> dict:
+        """
+        Cache the latest values from each window in state (keyed per Machine_ID).
+        Emit a fully-combined record on every update.
+        """
+        window_type = record.get("window_type")
 
-    logger.info('sdf_joined created')
+        if window_type == "10min":
+            state.set("Vibration_RollingMax_10min",  record.get("Vibration_RollingMax_10min"))
+            state.set("latest_timestamp",             record.get("latest_timestamp"))
 
-    def push_to_feast(row):
+        elif window_type == "5min":
+            state.set("Current_Imbalance_RollingMean_5min", record.get("Current_Imbalance_RollingMean_5min"))
+            state.set("Current_Imbalance_Ratio",            record.get("Current_Imbalance_Ratio"))
+            state.set("latest_timestamp",                   record.get("latest_timestamp"))
 
-        raw_ts = row['latest_timestamp']
-        utc_ts = _parse_iso8601(raw_ts).isoformat()
+        raw_ts    = state.get("latest_timestamp") or record.get("latest_timestamp")
+        utc_ts    = _parse_iso8601(raw_ts).isoformat()
 
-        record = {
-            "Machine_ID": row["Machine_ID"],
-            "timestamp": utc_ts,
-            "Current_Imbalance_Ratio": row.get("Current_Imbalance_Ratio"),
-            "Vibration_RollingMax_10min": row.get("Vibration_RollingMax_10min"),
-            "Current_Imbalance_RollingMean_5min": row.get("Current_Imbalance_RollingMean_5min")
+        return {
+            "Machine_ID":                        record["Machine_ID"],
+            "timestamp":                         utc_ts,
+            "Vibration_RollingMax_10min":        state.get("Vibration_RollingMax_10min"),
+            "Current_Imbalance_RollingMean_5min":state.get("Current_Imbalance_RollingMean_5min"),
+            "Current_Imbalance_Ratio":           state.get("Current_Imbalance_Ratio"),
         }
-        logger.info(f"Pushing to Feast: {record}")
-        _push(record)
 
-    sdf_joined.apply(push_to_feast)
+    def push_to_feast(record: dict) -> None:
+        logger.info(f"Pushing to Feast: {record}")
+        try:
+            feast.push(record)
+        except Exception as e:
+            logger.exception(f"Error pushing to Feast: {e}")
+
+    (
+        sdf_merged
+        .apply(merge_windows, stateful=True)
+        .apply(push_to_feast)
+    )
 
     logger.info('Pipelines configured — starting app')
     app.run()
