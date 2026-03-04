@@ -73,7 +73,7 @@ BATCH_SCHEMA = pa.schema([
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _write_init_parquet(directory: str, schema: pa.Schema) -> None:
+def _write_init_parquet(directory: str, schema: pa.Schema, personalized: str = 'init') -> None:
     """
     Create *directory* (and any missing parents) and write a zero-row Parquet
     file named '_init_schema.parquet' with the given *schema*.
@@ -81,7 +81,11 @@ def _write_init_parquet(directory: str, schema: pa.Schema) -> None:
     Skips silently if the init file already exists so the script is safe to
     re-run without overwriting live data written by the pipelines.
     """
-    init_path = os.path.join(directory, "_init_schema.parquet")
+
+    if not personalized:
+        init_path = os.path.join(directory, "_init_schema.parquet")
+    else:
+        init_path = os.path.join(directory, personalized)
 
     if os.path.isfile(init_path):
         print(f"[SKIP] Already exists : {init_path}")
@@ -104,11 +108,11 @@ if __name__ == "__main__":
     print()
 
     print("── Streaming backfill: vibration (10-min window) ──")
-    _write_init_parquet(VIBRATION_BACKFILL_DIR, VIBRATION_SCHEMA)
+    _write_init_parquet(VIBRATION_BACKFILL_DIR, VIBRATION_SCHEMA, 'vibration_backfill.parquet')
     print()
 
     print("── Streaming backfill: current imbalance (5-min window) ──")
-    _write_init_parquet(CURRENT_BACKFILL_DIR, CURRENT_SCHEMA)
+    _write_init_parquet(CURRENT_BACKFILL_DIR, CURRENT_SCHEMA, 'current_backfill.parquet')
     print()
 
     print("── Batch features (PySpark daily/weekly) ──")
