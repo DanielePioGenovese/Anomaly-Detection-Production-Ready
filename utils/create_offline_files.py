@@ -73,7 +73,7 @@ BATCH_SCHEMA = pa.schema([
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _write_init_parquet(directory: str, schema: pa.Schema, personalized: str = 'init') -> None:
+def _write_init_parquet(directory: str, schema: pa.Schema, personalized: str = 'init.parquet') -> None:
     """
     Create *directory* (and any missing parents) and write a zero-row Parquet
     file named '_init_schema.parquet' with the given *schema*.
@@ -82,10 +82,7 @@ def _write_init_parquet(directory: str, schema: pa.Schema, personalized: str = '
     re-run without overwriting live data written by the pipelines.
     """
 
-    if not personalized:
-        init_path = os.path.join(directory, "_init_schema.parquet")
-    else:
-        init_path = os.path.join(directory, personalized)
+    init_path = os.path.join(directory, personalized)
 
     if os.path.isfile(init_path):
         print(f"[SKIP] Already exists : {init_path}")
@@ -116,7 +113,7 @@ if __name__ == "__main__":
     print()
 
     print("── Batch features (PySpark daily/weekly) ──")
-    _write_init_parquet(BATCH_FEATURES_DIR, BATCH_SCHEMA)
+    _write_init_parquet(BATCH_FEATURES_DIR, BATCH_SCHEMA, "_init_schema.parquet")
     print()
 
     print("=" * 60)
