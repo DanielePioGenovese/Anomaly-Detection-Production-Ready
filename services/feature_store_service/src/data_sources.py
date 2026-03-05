@@ -36,14 +36,14 @@ machines_batch_source = FileSource(
 
 _vibration_backing = FileSource(
     name="vibration_stream_backing_source",
-    path="/data/offline/streaming_backfill/vibration_backfill.parquet",
+    path="/data/offline/streaming_backfill/vibration/vibration_backfill.parquet",
     timestamp_field="timestamp",
     description="Offline backfill for the 10-min vibration rolling-max feature",
 )
 
 _current_backing = FileSource(
     name="current_stream_backing_source",
-    path="/data/offline/streaming_backfill/current_backfill.parquet",
+    path="/data/offline/streaming_backfill/current/current_backfill.parquet",
     timestamp_field="timestamp",
     description="Offline backfill for the 5-min current imbalance features",
 )
