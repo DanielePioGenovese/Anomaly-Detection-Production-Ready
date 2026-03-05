@@ -272,3 +272,6 @@ debug_stream:
 	docker compose up --build producer_service -d
 
 debug: debug_quix debug_stream
+
+airflow:
+	docker compose up --build postgres_airflow airflow-init airflow-webserver airflow-scheduler 
