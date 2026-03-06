@@ -48,7 +48,7 @@ with DAG(
     dag_id="daily_batch_feature_pipeline",
     description="Runs the Spark batch feature pipeline once a day.",
     start_date=pendulum.datetime(2024, 1, 1, tz="UTC"),
-    schedule_interval="@daily",   # or e.g. "0 2 * * *" for 02:00 UTC
+    schedule="@daily",   # or e.g. "0 2 * * *" for 02:00 UTC
     catchup=False,                # Don't back-fill missed runs
     max_active_runs=1,            # Never run two instances in parallel
     default_args=default_args,
