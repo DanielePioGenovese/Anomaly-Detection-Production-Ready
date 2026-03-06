@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class Settings:
     # ── paths ─────────────────────────────────────────────────────────────────
-    datalake_dir:        str            # Source : processed industrial washer features
+    entitydf_dir:       str            # Source : processed industrial washer features
     offline_dir:         str            # Destination : Feast offline store directory
 
     # ── spark ─────────────────────────────────────────────────────────────────
@@ -99,9 +99,9 @@ def load_settings(config_path: str = "config.yaml") -> Settings:
 
     return Settings(
         # ── paths ──────────────────────────────────────────────────────────
-        datalake_dir=paths.get(
-            "data_warehouse_dir",
-            "/app/data/processed_datasets/machines_batch_features",
+        entitydf_dir=paths.get(
+            "entitydf_dir",
+            "/app/data/entity_df/telemetry_data/0",
         ),
         offline_dir=paths.get(
             "offline_store_dir",
