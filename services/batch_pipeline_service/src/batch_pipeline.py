@@ -1,25 +1,28 @@
 """
 Batch Feature Pipeline — Washing Machine Daily Vibration Ratio
 ==============================================================
-Reads telemetry data and computes Daily_Vibration_PeakMean_Ratio
-(max / mean of Vibration_mm_s) for every machine × calendar day.
+Reads telemetry data, computes Daily_Vibration_PeakMean_Ratio
+(max / mean of Vibration_mm_s) for every machine × calendar day,
+writes the result to the Feast offline store, then materializes
+into Redis (online store) in one single run.
 
-Output schema  (3 columns only):
+Output schema (3 columns only):
   Machine_ID                     Int64
   timestamp                      Timestamp UTC  ← max(timestamp) in the window
   Daily_Vibration_PeakMean_Ratio Float32
 
-All days are stored in a SINGLE parquet file; new runs append to it.
 Configuration is loaded from config.yaml (override with CONFIG_PATH env-var).
 """
 
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 import yaml
+from feast import FeatureStore
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
@@ -36,13 +39,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Settings:
-    entitydf_dir:        str
-    offline_dir:         str
-    spark_app_name:      str
-    spark_master:        str
-    spark_extra_configs: Dict[str, str]
-    timestamp_column:    str
-    write_mode:          str
+    entitydf_dir:         str
+    offline_dir:          str
+    spark_app_name:       str
+    spark_master:         str
+    spark_extra_configs:  Dict[str, str]
+    timestamp_column:     str
+    write_mode:           str
+    feast_repo_path:      str
+    feast_feature_views:  List[str]
 
 
 def load_settings(config_path: str = "config.yaml") -> Settings:
@@ -61,6 +66,8 @@ def load_settings(config_path: str = "config.yaml") -> Settings:
         spark_extra_configs = cfg["spark"].get("configs",   {}),
         timestamp_column    = cfg["schema"].get("timestamp_column", "timestamp"),
         write_mode          = cfg["processing"].get("write_mode",   "append"),
+        feast_repo_path     = cfg["feast"]["repo_path"],
+        feast_feature_views = cfg["feast"]["feature_views"],
     )
 
 
@@ -105,6 +112,21 @@ def write_single_file(df: DataFrame, out_path: Path, write_mode: str) -> None:
     logger.info("  → Written successfully")
 
 
+def materialize(s: Settings) -> None:
+    """Push offline store rows into Redis via Feast materialize_incremental."""
+    end_date = datetime.now(tz=timezone.utc)
+    logger.info("Feast repo      : %s", s.feast_repo_path)
+    logger.info("Feature views   : %s", s.feast_feature_views)
+    logger.info("Materializing up to: %s", end_date.isoformat())
+
+    store = FeatureStore(repo_path=s.feast_repo_path)
+    store.materialize_incremental(
+        end_date=end_date,
+        feature_views=s.feast_feature_views,
+    )
+    logger.info("✓ Materialization complete — Daily_Vibration_PeakMean_Ratio is now in Redis")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -120,19 +142,17 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
 
     try:
-        df            = read_inputs(spark, s.entitydf_dir, s.timestamp_column)
+        df = read_inputs(spark, s.entitydf_dir, s.timestamp_column)
         batch_features = compute_daily_features(df, s.timestamp_column)
-
         batch_features.show(10, truncate=False)
-
         write_single_file(batch_features, Path(s.offline_dir), s.write_mode)
-
     except Exception as exc:
         logger.error(f"Pipeline failed: {exc}", exc_info=True)
         raise
     finally:
         spark.stop()
 
+    materialize(s)
 
 if __name__ == "__main__":
     main()

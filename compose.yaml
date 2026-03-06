@@ -82,6 +82,18 @@ services:
     networks:
       - anomaly-detection-network
 
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: redis_insight
+    ports:
+      - "5540:5540" 
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - anomaly-detection-network
+    restart: unless-stopped
+
   # ============================================================================
   # FEAST APPLY - Register Feature Definitions (Run Once)
   # ============================================================================
@@ -202,6 +214,7 @@ services:
       - ./data:/app/data
       - ./services/batch_pipeline_service:/app/batch_pipeline_service
       - ./services/data_engineering_service:/app/data_engineering_service
+      - ./services/feature_store_service/src:/app/feature_store_service
     shm_size: '2gb'
     networks:
       - anomaly-detection-network

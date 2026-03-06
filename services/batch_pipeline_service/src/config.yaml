@@ -2,8 +2,8 @@
 
 # Data paths
 paths:
-  entitydf_dir:      "/app/data/entity_df/telemetry_data/0"
-  offline_store_dir: "/app/data/offline/machine_batch_features"
+  entitydf_dir:        "/app/data/entity_df/telemetry_data/0"
+  offline_store_dir:   "/app/data/offline/machine_batch_features"
 
 # Spark configuration
 spark:
@@ -21,4 +21,10 @@ schema:
 
 # Processing
 processing:
-  write_mode: "append"   # "append" for daily incremental runs; "overwrite" for backfills
+  write_mode: "append"  
+
+# Feast
+feast:
+  repo_path:     "/app/feature_store_service"
+  feature_views:
+    - "machine_batch_features"
