@@ -401,7 +401,6 @@ services:
   # ============================================================================
   # Ingestion RAG - Document Ingestion Pipeline
   # ============================================================================
-
   ingestion_rag:
     build: 
       context: .
@@ -416,57 +415,6 @@ services:
       - ./rag_files:/rag_service/rag_files
     networks:
       - anomaly-detection-network
-
-  # ============================================================================
-  # MCP SERVER - RAG Pipeline + LLM Integration
-  # ============================================================================
-  # mcp_server_service:
-  #   build:
-  #     context: .
-  #     dockerfile: services/mcp_server_service/dockerfile
-  #   container_name: mcp_server
-  #   profiles: [ "online" ]
-  #   depends_on:
-  #     qdrant:
-  #       condition: service_healthy
-  #     redpanda-init:
-  #       condition: service_completed_successfully
-  #   env_file:
-  #     - .env
-  #   ports:
-  #     - "8002:8000"
-  #   networks:
-  #     - anomaly-detection-network
-  #   restart: unless-stopped  
-    
-# ============================================================================
-  # FEAST MATERIALIZE - Loads batch features into Redis
-  # ============================================================================
-  feast_materialize:
-    build:
-      context: .
-      dockerfile: services/feature_store_service/Dockerfile
-    container_name: feast_materialize
-    depends_on:
-      batch_feature_pipeline:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-    environment:
-      - PYTHONUNBUFFERED=1
-    volumes:
-      - ./data/registry:/data/registry
-      - ./data/offline:/data/offline
-      - ./services/feature_store_service/src:/feature_store_service/src:ro
-    command:
-      - "uv"
-      - "run"
-      - "feast"
-      - "materialize-incremental"
-      - "2030-01-01T00:00:00"
-    networks:
-      - anomaly-detection-network
-    restart: "no"
 
 # ============================================================================
   # AIRFLOW - Orchestration
@@ -493,7 +441,7 @@ services:
     container_name: airflow_webserver
     command: webserver
     ports:
-      - "8081:8080" # Mapping to 8081 because Redpanda Console is on 8080
+      - "8081:8080" 
     environment: &airflow-common-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres_airflow/airflow
@@ -502,11 +450,13 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       FEAST_REPO_PATH: /opt/airflow/feature_store
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      HOST_PROJECT_DIR: ${PWD}
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./services/feature_store_service/src:/opt/airflow/feature_store:ro
       - ./data:/opt/airflow/data
+      - /var/run/docker.sock:/var/run/docker.sock 
     user: "${AIRFLOW_UID:-50000}:0"
     depends_on:
       postgres_airflow:
@@ -526,6 +476,7 @@ services:
       - ./logs:/opt/airflow/logs
       - ./services/feature_store_service/src:/opt/airflow/feature_store:ro
       - ./data:/opt/airflow/data
+      - /var/run/docker.sock:/var/run/docker.sock  
     user: "${AIRFLOW_UID:-50000}:0"
     depends_on:
       postgres_airflow:
