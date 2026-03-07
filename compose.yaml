@@ -220,6 +220,17 @@ services:
       - anomaly-detection-network
     restart: "no"
 
+  create_offline_files:
+    build:
+      context: .
+      dockerfile: utils/offline_files_util/Dockerfile
+    container_name: offline_files_util
+    volumes:
+      - ./data:/data
+    networks:
+      - anomaly-detection-network
+    restart: "no" 
+
   # ============================================================================
   # PRODUCER - Sends telemetry data to Redpanda
   # ============================================================================

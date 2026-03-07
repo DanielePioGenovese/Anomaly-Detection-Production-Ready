@@ -46,7 +46,7 @@ CURRENT_BACKFILL_DIR   = os.path.join(BASE_DATA_DIR, "streaming_backfill/current
 BATCH_FEATURES_DIR      = os.path.join(BASE_DATA_DIR, "machines_batch_features")
 
 # Necessary to do materialization (for the first time)
-DATALAKE = "data\processed_datasets\machines_batch_features"
+DATALAKE = "/data/processed_datasets/machines_batch_features"
 
 # ── Schemas (must match features.py Field definitions + entity key) ───────────
 

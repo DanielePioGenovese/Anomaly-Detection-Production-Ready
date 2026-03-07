@@ -110,6 +110,9 @@ offline-files = [
     "pandas>=2.3.3",
     "pyarrow>=22.0.0",
 ]
+cold-start = [
+    "feast>=0.60.0",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu126"
