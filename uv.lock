@@ -6108,7 +6108,7 @@ dependencies = [
 
 [package.dev-dependencies]
 cold-start = [
-    { name = "feast" },
+    { name = "feast", extra = ["redis"] },
 ]
 data-engineering = [
     { name = "pyspark" },
@@ -6212,7 +6212,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-cold-start = [{ name = "feast", specifier = ">=0.60.0" }]
+cold-start = [{ name = "feast", extras = ["redis"], specifier = ">=0.60.0" }]
 data-engineering = [
     { name = "pyspark", specifier = ">=4.1.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },

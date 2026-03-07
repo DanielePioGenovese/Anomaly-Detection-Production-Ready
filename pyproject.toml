@@ -111,7 +111,7 @@ offline-files = [
     "pyarrow>=22.0.0",
 ]
 cold-start = [
-    "feast>=0.60.0",
+    "feast[redis]>=0.60.0",
 ]
 
 [[tool.uv.index]]

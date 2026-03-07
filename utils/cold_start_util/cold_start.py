@@ -20,7 +20,8 @@ def cold_start() -> None:
     logger.info("Materializing up to: %s", end_date.isoformat())
 
     store = FeatureStore(repo_path=FEAST_REPO_PATH)
-    store.materialize_incremental(
+    store.materialize(
+        start_date=datetime(2024, 1, 1, tzinfo=timezone.utc), 
         end_date=end_date,
         feature_views=[FEAST_FEATURE_VIEWS],
     )
