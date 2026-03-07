@@ -87,7 +87,7 @@ data_engineering:
 
 infra-up:
 	@echo "  [4/7] Starting infrastructure (Redis, Redpanda, MLflow, Qdrant)..."
-	docker compose up -d --build redis redpanda redpanda-console redpanda-init mlflow qdrant redis-insight
+	docker compose up -d --build redis redpanda redpanda-console redpanda-init redis-insight
 	@echo "  Waiting 15s for services to become healthy..."
 	@sleep 15
 
