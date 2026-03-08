@@ -181,3 +181,40 @@ debug_4:
 
 debug_5:
 	docker compose up --build retraining_service
+
+
+# ----------- INFERENCE 
+
+
+.PHONY: test-inference down-inference
+
+# Starts only what is needed to test the inference pipeline end-to-end:
+#   redis             → online feature store
+#   redpanda          → message broker
+#   redpanda-init     → creates telemetry-data and predictions topics
+#   mlflow            → model registry (inference loads the model at startup)
+#   feature_store_service → Feast HTTP server (inference fetches features from here)
+#   streaming_service → computes rolling window features and pushes to Redis
+#   inference_service → consumes telemetry-data, scores, publishes to predictions
+#   producer_service  → sends test telemetry messages
+#   redpanda-console  → UI to inspect telemetry-data and predictions topics
+test-inference:
+	docker compose --profile online up --build \
+		redis \
+		redpanda \
+		redpanda-console \
+		redpanda-init \
+		mlflow \
+		feature_store_service \
+		streaming_service \
+		inference_service \
+		producer_service
+	@echo ""
+	@echo "Redpanda console : http://localhost:8080"
+	@echo "Feast server     : http://localhost:8000/health"
+	@echo "MLflow UI        : http://localhost:5000"
+
+down-inference:
+	docker compose --profile online down \
+		redis redpanda redpanda-console redpanda-init mlflow \
+		feature_store_service streaming_service inference_service producer_service
