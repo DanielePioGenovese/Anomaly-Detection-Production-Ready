@@ -305,6 +305,33 @@ services:
     restart: 'no'
 
   # ============================================================================
+  # RETRAINING SERVICE - Weekly IsolationForest retraining
+  # ============================================================================
+  retraining_service:
+    build:
+      context: .
+      dockerfile: services/retraining_service/Dockerfile
+    container_name: retraining_service
+    depends_on:
+      redis:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - FEAST_REPO_PATH=/feature_store
+    volumes:
+      - ./data/registry:/data/registry:ro                              
+      - ./data/offline:/data/offline:ro                                
+      - ./data/entity_df:/datalake:ro                                  
+      - ./services/feature_store_service/src:/feature_store:ro         
+      - ./outputs:/outputs                                             
+    networks:
+      - anomaly-detection-network
+    restart: "no"   # batch job — Airflow re-creates the container each week
+
+  # ============================================================================
   # STREAMING SERVICE - Real-time feature engineering (Quix Streams)
   # ============================================================================
   streaming_service:

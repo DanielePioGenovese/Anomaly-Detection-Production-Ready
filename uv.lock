@@ -6176,6 +6176,16 @@ rag-service = [
     { name = "langchain-text-splitters" },
     { name = "pydantic-settings" },
 ]
+retraining = [
+    { name = "feast" },
+    { name = "mlflow" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "redis" },
+    { name = "scikit-learn" },
+]
 spark-services = [
     { name = "pyspark" },
     { name = "pyyaml" },
@@ -6192,6 +6202,7 @@ training = [
     { name = "mlflow" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pydantic-settings" },
     { name = "scikit-learn" },
 ]
 training-ml = [
@@ -6269,6 +6280,16 @@ rag-service = [
     { name = "langchain-text-splitters", specifier = ">=1.1.1" },
     { name = "pydantic-settings", specifier = ">=2.11.0" },
 ]
+retraining = [
+    { name = "feast", specifier = ">=0.60.0" },
+    { name = "mlflow", specifier = ">=3.9.0" },
+    { name = "numpy", specifier = ">=2.4.2" },
+    { name = "pandas", specifier = ">=2.3.3" },
+    { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "pydantic-settings", specifier = ">=2.11.0" },
+    { name = "redis", specifier = ">=4.6.0" },
+    { name = "scikit-learn", specifier = ">=1.8.0" },
+]
 spark-services = [
     { name = "pyspark", specifier = ">=4.1.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
@@ -6285,6 +6306,7 @@ training = [
     { name = "mlflow", specifier = ">=3.9.0" },
     { name = "numpy", specifier = ">=2.4.1" },
     { name = "pandas", specifier = ">=2.3.3" },
+    { name = "pydantic-settings", specifier = ">=2.11.0" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
 ]
 training-ml = [

@@ -53,6 +53,7 @@ training= [
     "mlflow>=3.9.0",
     "numpy>=2.4.1",
     "pandas>=2.3.3",
+    "pydantic-settings>=2.11.0",
     "scikit-learn>=1.8.0",
 ]
 mlflow = [
@@ -110,6 +111,16 @@ offline-files = [
 ]
 cold-start = [
     "feast[redis]>=0.60.0",
+]
+retraining = [
+    "feast>=0.60.0",
+    "mlflow>=3.9.0",
+    "numpy>=2.4.2",
+    "pandas>=2.3.3",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.11.0",
+    "redis>=4.6.0",
+    "scikit-learn>=1.8.0",
 ]
 
 [[tool.uv.index]]

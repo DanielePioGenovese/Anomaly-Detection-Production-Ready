@@ -4,13 +4,14 @@ WORKDIR /retraining_service
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# caching: prima manifest/lock
+# Cache dependency install before copying source code
 COPY pyproject.toml uv.lock* ./
-
-# installa SOLO training group
 RUN uv sync --frozen --no-dev --group retraining
 
-# poi copia il codice
-COPY src/training_pipeline /app/training_pipeline
+# Copy service source
+COPY services/retraining_service /retraining_service
 
-CMD ["uv", "run", "-m", "retraining_service.training_pipeline.train"]
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/retraining_service
+
+CMD ["uv", "run", "python", "-m", "retrain"]
