@@ -23,7 +23,7 @@ processed_datasets/
 synthetic_datasets/
 data/offline
 data/
-
+logs/
 
 # Kafka
 kafka_storage/
