@@ -164,3 +164,20 @@ logs-online:
 logs-all:
 	docker compose --profile online logs -f &
 	docker compose logs -f
+
+# ------------ DEBUG ACTIVATE DAG WITH AIRFLOW GUI
+
+debug_1:
+	docker compose up --build --wait redis redis-insight redpanda redpanda-console feature_store_service
+
+debug_2:
+	docker compose run --rm cold_start
+
+debug_3:
+	docker compose up --build -d streaming_service
+
+debug_4:
+	docker compose up --build producer_service -d
+
+debug_5:
+	docker compose up --build retraining_service

@@ -506,6 +506,7 @@ services:
       FEAST_REPO_PATH: /opt/airflow/feature_store
       MLFLOW_TRACKING_URI: http://mlflow:5000
       HOST_PROJECT_DIR: ${PWD}
+      RETRAINING_IMAGE: retraining_service:latest  
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
