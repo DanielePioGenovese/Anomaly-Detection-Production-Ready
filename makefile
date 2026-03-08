@@ -206,6 +206,7 @@ test-inference:
 		redpanda-init \
 		mlflow \
 		feature_store_service \
+		cold_start \
 		streaming_service \
 		inference_service \
 		producer_service

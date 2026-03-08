@@ -22,6 +22,7 @@ import mlflow.sklearn
 import pandas as pd
 import requests
 from quixstreams import Application
+import numpy as np
 
 from config import Config
 
@@ -136,6 +137,8 @@ def build_x(features: dict[str, Any], feature_columns: list[str]) -> pd.DataFram
     row = {col: features.get(col) for col in feature_columns}
     x   = pd.DataFrame([row], columns=feature_columns)
 
+    x = x.replace({None: np.nan})
+
     for col in x.columns:
         if col == "Cycle_Phase_ID":
             # BUG FIX: pd.to_numeric would silently convert "1" → 1,
@@ -160,8 +163,8 @@ def predict(model, x: pd.DataFrame) -> tuple[int, float, int]:
       anomaly_score : decision_function value;  < 0 → anomaly territory
       raw_label     : sklearn raw output (-1 anomaly / +1 normal)
     """
-    raw_label     = int(model.predict(x)[0])              # -1 (anomaly) or +1 (normal)
-    anomaly_score = float(model.decision_function(x)[0])  # negative = more anomalous
+    raw_label = int(model.predict(x)[0])              # -1 (anomaly) or +1 (normal)
+    anomaly_score = float(model.decision_function(x)[0])  # negative = more anomalous  
 
     is_anomaly = (
         Config.OUTPUT_ANOMALY
