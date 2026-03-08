@@ -33,15 +33,15 @@ class Settings(BaseSettings):
     )
 
     # ── MLflow ────────────────────────────────────────────────────────────────
-    mlflow_tracking_uri: str    = "http://mlflow:5000"
+    mlflow_tracking_uri: str = "http://mlflow:5000"
     mlflow_experiment_name: str = "isolation_forest_retrain"  # separate experiment from first training
-    mlflow_model_name: str      = "if_anomaly_detector"       # same registered model name → new version each week
+    mlflow_model_name: str = "if_anomaly_detector"       # same registered model name → new version each week
 
     # ── Feast / Feature Store ─────────────────────────────────────────────────
-    feast_repo_path: str         = "/feature_repo"           # path to feature_store.yaml inside the container
-    feature_service_name: str    = "machines_v1"             # Feast FeatureService to use
-    entity_df_path: str          = "/datalake/entity_df_machines.parquet"  # raw sensor entity df (ids + timestamps)
-    event_timestamp_column: str  = "event_timestamp"         # timestamp column name in entity_df
+    feast_repo_path: str = "/feature_repo"           # path to feature_store.yaml inside the container
+    feature_service_name: str = "machines_v1"             # Feast FeatureService to use
+    entity_df_path: str = "/datalake/telemetry_data/0"  # partitioned parquet directory
+    event_timestamp_column: str = "event_timestamp"         # timestamp column name in entity_df
 
     # ── Output ────────────────────────────────────────────────────────────────
     output_dir: str = "/outputs"   # matches Docker volume mount ./outputs:/outputs

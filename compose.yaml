@@ -324,7 +324,7 @@ services:
     volumes:
       - ./data/registry:/data/registry:ro                              
       - ./data/offline:/data/offline:ro                                
-      - ./data/entity_df:/datalake:ro                                  
+      - ./data/entity_df:/datalake:ro  
       - ./services/feature_store_service/src:/feature_store:ro         
       - ./outputs:/outputs                                             
     networks:

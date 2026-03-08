@@ -15,6 +15,8 @@ Data flow:
 
 import logging
 import time
+import glob
+import os
 
 import pandas as pd
 from feast import FeatureStore
@@ -60,10 +62,37 @@ class FeatureLoader:
         t0 = time.time()
         ts_col = self.s.event_timestamp_column
 
-        # ── Step 1: load entity_df ────────────────────────────────────────────
+
+        # ── Step 1: load entity_df (single file or partitioned directory) ─────────
         logger.info(f"[FEAST] Loading entity_df from: {self.s.entity_df_path}")
-        entity_df = pd.read_parquet(self.s.entity_df_path)
+
+        path = self.s.entity_df_path
+
+        if path.endswith(".parquet") and os.path.isfile(path):
+            entity_df = pd.read_parquet(path)
+
+        elif os.path.isdir(path):
+            parquet_files = sorted(glob.glob(os.path.join(path, "**/*.parquet"), recursive=True))
+            if not parquet_files:
+                raise FileNotFoundError(f"[FEAST] No .parquet files found under: {path}")
+            logger.info(f"[FEAST] Found {len(parquet_files)} parquet file(s) in directory")
+            entity_df = pd.concat([pd.read_parquet(f) for f in parquet_files], ignore_index=True)
+
+        else:
+            raise FileNotFoundError(f"[FEAST] Path not found or not a parquet file/directory: {path}")
+
         logger.info(f"[FEAST] entity_df loaded — {len(entity_df):,} rows")
+
+        quix_cols = [c for c in ["_timestamp", "_key"] if c in entity_df.columns]
+        if quix_cols:
+            entity_df = entity_df.drop(columns=quix_cols)
+            logger.info(f"[FEAST] Dropped QuixStreams metadata columns: {quix_cols}")
+
+        # Rename 'timestamp' → 'event_timestamp' (Feast requirement)
+        raw_ts = "timestamp"
+        if raw_ts in entity_df.columns and raw_ts != ts_col:
+            entity_df = entity_df.rename(columns={raw_ts: ts_col})
+            logger.info(f"[FEAST] Renamed '{raw_ts}' → '{ts_col}'")
 
         if ts_col not in entity_df.columns:
             raise KeyError(
