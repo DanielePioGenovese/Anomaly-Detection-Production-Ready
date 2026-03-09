@@ -126,6 +126,11 @@ if-anomaly = [
     "quixstreams>=3.23.3",
     "requests>=2.32.5",
 ]
+langchain-app = [
+    "langchain>=1.2.10",
+    "langchain-mcp-adapters>=0.2.1",
+    "langchain-openai>=1.1.10",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu126"
