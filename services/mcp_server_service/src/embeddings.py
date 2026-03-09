@@ -24,7 +24,7 @@ import google.generativeai as genai
 from fastembed.sparse import SparseTextEmbedding
 from qdrant_client.models import SparseVector
 
-from .config import get_config
+from config import get_config
 
 logger = logging.getLogger(__name__)
 

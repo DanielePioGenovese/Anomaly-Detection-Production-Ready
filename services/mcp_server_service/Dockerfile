@@ -11,4 +11,4 @@ COPY services/mcp_server_service/src ./src/
 ENV PYTHONPATH="/mcp_server_service"
 ENV PATH="/mcp_server_service/.venv/bin:$PATH"
 
-CMD ["python", "src/server.py"]
+CMD ["uv", "run", "src.server"]
