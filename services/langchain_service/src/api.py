@@ -16,15 +16,33 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .agent import MCPClientAgent
-from config import get_connfig
 from .models import AnomalyInvestigationRequest, AnomalyInvestigationResponse, AgentMessage
 
+from contextlib import asynccontextmanager
+
 logger = logging.getLogger(__name__)
+
+
+# ── Singleton agent (initialised once at startup) ─────────────────────────────
+
+_agent: MCPClientAgent | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _agent
+    logger.info("Initialising MCPClientAgent …")
+    _agent = MCPClientAgent()
+
+    yield
+
+    logger.info("MCPClientAgent ready.")
 
 app = FastAPI(
     title="MCP Client",
     description="LangGraph agent for anomaly investigation via MCP Server tools",
     version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -33,19 +51,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ── Singleton agent (initialised once at startup) ─────────────────────────────
-
-_agent: MCPClientAgent | None = None
-
-
-@app.on_event("startup")
-async def startup_event() -> None:
-    global _agent
-    logger.info("Initialising MCPClientAgent …")
-    _agent = MCPClientAgent()
-    logger.info("MCPClientAgent ready.")
-
 
 def get_agent() -> MCPClientAgent:
     if _agent is None:

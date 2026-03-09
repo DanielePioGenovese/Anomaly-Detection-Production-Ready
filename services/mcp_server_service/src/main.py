@@ -22,7 +22,7 @@ logger = logging.getLogger("main")
 
 
 def start_rest() -> None:
-    from src.config import get_config
+    from config import get_config
     from src.api import app
 
     cfg = get_config()

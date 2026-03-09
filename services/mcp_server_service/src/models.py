@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .models import HealthResponse, RetrieveRequest, RetrieveResponse
 from .retriever import health_check, retrieve
-from .config import get_config
+from config import get_config
 
 logger = logging.getLogger(__name__)
 

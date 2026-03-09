@@ -10,10 +10,7 @@ from pathlib import Path
 
 import yaml
 
-
-CONFIG_PATH = Path(__file__).parent.parent / "config" / "config.yaml"
-
-
+CONFIG_PATH = Path(__file__) / "config.yaml"
 @lru_cache(maxsize=1)
 def get_config() -> dict:
     with open(CONFIG_PATH, "r") as fh:

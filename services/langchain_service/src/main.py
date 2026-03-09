@@ -11,9 +11,11 @@ MODE env var controls what starts:
 
 import logging
 import os
-import threading
 
 import uvicorn
+
+from config import get_config
+from .api import app
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,10 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
-
 def start_api() -> None:
-    from config import get_config
-    from src.api import app
 
     cfg = get_config()
     uvicorn.run(
