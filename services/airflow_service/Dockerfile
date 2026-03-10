@@ -10,13 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
-# ✅ FIX: Switch to airflow user BEFORE pip/uv — the image blocks pip as root intentionally
 USER airflow
 
 # pip works fine as airflow user
 RUN pip install --upgrade uv
 
-# ✅ Drop --system — airflow user installs to its own site-packages, no root needed
 RUN uv pip install \
     "apache-airflow==2.10.2" \
     "apache-airflow-providers-apache-spark" \
