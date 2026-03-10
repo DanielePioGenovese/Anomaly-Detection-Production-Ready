@@ -5958,6 +5958,7 @@ feature-store-apply = [
     { name = "feast", extra = ["duckdb", "redis"] },
 ]
 if-anomaly = [
+    { name = "httpx" },
     { name = "pydantic-settings" },
     { name = "quixstreams" },
     { name = "requests" },
@@ -6106,6 +6107,7 @@ dataset-creation-2 = [
 feature-store = [{ name = "feast", extras = ["redis", "duckdb"], specifier = ">=0.58.0" }]
 feature-store-apply = [{ name = "feast", extras = ["redis", "duckdb"], specifier = ">=0.58.0" }]
 if-anomaly = [
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pydantic-settings", specifier = ">=2.11.0" },
     { name = "quixstreams", specifier = ">=3.23.3" },
     { name = "requests", specifier = ">=2.32.5" },

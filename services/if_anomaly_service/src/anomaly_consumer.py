@@ -82,13 +82,27 @@ def trigger_mcp_investigation(message: dict):
     """
     logger.info(f"🚨 ANOMALY DETECTED: Triggering investigation for {message.get('Machine_ID', 'unknown')}")
     
-    # Example POST request to your MCP Client API
-    # try:
-    #     response = requests.post(f"{Config.MCP_API_URL}/investigate", json=message)
-    #     response.raise_for_status()
-    # except Exception as e:
-    #     logger.error(f"Failed to trigger MCP API: {e}")
+    MCP_CLIENT_URL: str = "http://langchain_service:8010"  # correct name + port
 
+# anomaly_consumer.py
+    import httpx
+
+    def trigger_mcp_investigation(message: dict):
+        payload = {
+            "message": (
+                f"Investigate anomaly for machine {message.get('machine_id')}. "
+                f"Score: {message.get('anomaly_score'):.3f}. "
+                f"Features: {message.get('features')}"
+            )
+        }
+        try:
+            with httpx.Client(timeout=30) as client:
+                r = client.post(f"{Config.MCP_CLIENT_URL}/chat/stream", json=payload)
+                r.raise_for_status()
+            logger.info("Investigation triggered successfully.")
+        except Exception as e:
+            logger.error(f"Failed to trigger MCP agent: {e}")
+            
 def main() -> None:
     logger.info('Starting Anomaly Consumer Service')
 

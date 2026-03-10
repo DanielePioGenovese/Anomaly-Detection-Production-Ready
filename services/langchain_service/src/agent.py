@@ -1,45 +1,47 @@
 from langchain_openai import ChatOpenAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain.agents import create_agent
-from config import inference_settings
+from langgraph.prebuilt import create_react_agent
+from config.config import inference_settings
 import logging
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-
 client = MultiServerMCPClient(
     {
-        'mcp_client': {
-            'transport': 'http',
+        'mcp_server': {
+            'transport': 'streamable_http',
             'url': inference_settings.mcp_server_uri,
-            'headers': { 
-                'X-Custom-Header':'custom-value'
+            'headers': {
+                'X-Custom-Header': 'custom-value'
             }
         }
     }
 )
 
+
 async def build_agent():
     tools = await client.get_tools()
-    logging.info(f"MCP Tools: {[t.name for t in tools]}")
+    logger.info(f"MCP Tools loaded: {[t.name for t in tools]}")
 
     llm = ChatOpenAI(
         model=inference_settings.chat_model,
+        base_url=inference_settings.vllm_base_url,
+        api_key='EMPTY',                   
         temperature=0.2,
         timeout=120,
-        streaming=True
+        streaming=True,
     )
 
-    agent = create_agent(
+    agent = create_react_agent(
         llm,
         tools=tools,
-        system_prompt=(
-            'Example Prompt'
+        prompt=(
+            'You are an anomaly investigation assistant. '
+            'Use the available tools to retrieve context and diagnose the anomaly.'
         )
     )
 

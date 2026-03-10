@@ -670,6 +670,65 @@ services:
     networks:
       - anomaly-detection-network
 
+  # --------------------------------------------------------------------------
+  # vLLM - Local LLM server (OpenAI-compatible API)
+  # Requires NVIDIA GPU. Model is cached in ./local_models/hf_cache.
+  # --------------------------------------------------------------------------
+  vllm:
+    build:
+      context: ./services/vllm_service
+      dockerfile: Dockerfile
+    container_name: vllm
+    profiles: [ "online" ]
+    runtime: nvidia                       
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_HOME=/root/.cache/huggingface
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}   
+    volumes:
+      - ./local_models/hf_cache:/root/.cache/huggingface  
+    ports:
+      - "8000:8000"
+    networks:
+      - anomaly-detection-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 120s                  
+
+  # --------------------------------------------------------------------------
+  # LANGCHAIN SERVICE - LangGraph agent (MCP client → vLLM)
+  # --------------------------------------------------------------------------
+  langchain_service:
+    build:
+      context: ./services/langchain_service
+      dockerfile: Dockerfile
+    container_name: langchain_service
+    profiles: [ "online" ]
+    depends_on:
+      vllm:
+        condition: service_healthy
+      mcp_server:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MCP_SERVER_URL=http://mcp_server:8020/mcp
+      - VLLM_BASE_URL=http://vllm:8000/v1
+    ports:
+      - "8010:8010"
+    networks:
+      - anomaly-detection-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 networks:
   anomaly-detection-network:
     driver: bridge

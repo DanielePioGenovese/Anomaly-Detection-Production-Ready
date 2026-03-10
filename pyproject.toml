@@ -122,6 +122,7 @@ retraining = [
     "scikit-learn>=1.8.0",
 ]
 if-anomaly = [
+    "httpx>=0.28.1",
     "pydantic-settings>=2.11.0",
     "quixstreams>=3.23.3",
     "requests>=2.32.5",

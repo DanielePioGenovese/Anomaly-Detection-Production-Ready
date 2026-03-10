@@ -4,7 +4,7 @@ from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from qdrant.config import retrieval_settings
 from flashrank import Ranker
 from langchain_community.document_compressors import FlashrankRerank
-from langchain_classic.retrievers import ContextualCompressionRetriever
+from langchain.retrievers import ContextualCompressionRetriever
 from langchain_core.documents import Document
 
 def format_docs(docs: list[Document]) -> str:
@@ -16,9 +16,8 @@ def format_docs(docs: list[Document]) -> str:
         for d in docs
     )
 
-dense_embeddings_model = HuggingFaceEmbeddings(
-        model=retrieval_settings.embedding_model
-    )
+dense_embeddings_model = HuggingFaceEmbeddings(model_name=retrieval_settings.embedding_model)
+
 
 sparse_embeddings_model = FastEmbedSparse(model_name="Qdrant/bm25")
 

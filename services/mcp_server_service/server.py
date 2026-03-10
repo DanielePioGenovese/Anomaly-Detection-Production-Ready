@@ -14,7 +14,7 @@ mcp = FastMCP('MCP_server')
 mongo_logger = MongoLogger()
 
 @mcp.tool()
-def retrive_context(query: str, machine_id: int):
+def retrieve_context(query: str, machine_id: int):
 
     try:
         retrieved_docs = compression_retriever.invoke(query)
