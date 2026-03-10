@@ -93,7 +93,7 @@ infra-up:
 
 feast-apply:
 	@echo "  [5/7] Registering Feast feature definitions + ingesting RAG docs..."
-	docker compose --profile setup up --build --abort-on-container-exit feature_store_apply ingestion_rag
+	docker compose --profile setup up --build --abort-on-container-exit feature_store_apply 
 
 batch-pipeline:
 	@echo "  [6/7] Running Spark batch feature pipeline -> offline store..."
@@ -219,3 +219,10 @@ down-inference:
 	docker compose --profile online down \
 		redis redpanda redpanda-console redpanda-init mlflow \
 		feature_store_service streaming_service inference_service producer_service
+
+
+ingestion_rag:
+	docker compose up --build qdrant ingestion_rag
+
+block_2:
+	docker compose up --build if_anomaly_service mongodb vllm mcp_server mcp_client_api langchain_service fakeproducer 

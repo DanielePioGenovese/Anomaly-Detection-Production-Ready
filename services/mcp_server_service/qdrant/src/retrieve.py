@@ -18,7 +18,6 @@ def format_docs(docs: list[Document]) -> str:
 
 dense_embeddings_model = HuggingFaceEmbeddings(model_name=retrieval_settings.embedding_model)
 
-
 sparse_embeddings_model = FastEmbedSparse(model_name="Qdrant/bm25")
 
 reranker_model = HuggingFaceCrossEncoder(model_name="BAAI/bge-reranker-base")
