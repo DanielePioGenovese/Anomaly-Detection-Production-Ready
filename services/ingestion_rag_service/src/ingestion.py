@@ -65,7 +65,8 @@ def main() -> None:
     # Dense embeddings configuration using Google Generative AI model
     dense_embeddings = HuggingFaceEmbeddings(
         model_name=ingestion_settings.embedding_model, 
-        model_kwargs={'device': 'cuda'}    
+        model_kwargs={'device': 'cuda'},
+        cache_folder='ingestion_rag_service/models/hugging_face'
     )
 
     # Sparse embeddings configuration using BM25 algorithm

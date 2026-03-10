@@ -1,4 +1,3 @@
-# Python & Virtual Env
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,15 +7,12 @@ env/
 venv/
 .env
 
-# Personal files
 ImportantThings.txt
 test_1.py
 notes.txt
 
-# Parquet Files
 *.parquet
 
-# Folders
 historical_data/
 streaming_data/
 processed_datasets/
@@ -25,21 +21,16 @@ data/offline
 data/
 logs/
 
-# Kafka
 kafka_storage/
 
-# RedPanda
-# 🛑 DATA & ARTIFACTS (Strict Exclusion)
-# Ignora interamente la cartella data/ dove vengono generati i dataset e i modelli
+
 data/
 
-# Ignora i volumi persistenti dei container
 redpanda_storage/
 kafka_storage/
 redis_data/
+qdrant_data/
 
-# 🛡️ SAFETY NET (Estensioni File Generati & Spark debris)
-# Ignora questi file ovunque si trovino, per sicurezza
 *.parquet
 *.pkl
 *.joblib
@@ -48,21 +39,18 @@ redis_data/
 *.log
 *.csv
 
-# Spark / Hadoop temporary files
 part-*
 _SUCCESS
 .*.crc
 .part-*.crc
 ._SUCCESS.crc
 
-# IDE / Editors
 .vscode/
 .vscode/settings.json
 
-# Feature Store
 data/registry
 
-# Training
+
 outputs/
 MLOPS_FLOW_EXPLAINED.md
 BUGFIX_LOG.md
@@ -70,7 +58,6 @@ BUGFIX_LOG.md
 *.swp
 .DS_Store
 
-# documentation / logs
 BUGFIX_LOG.md
 TODO.md
 
@@ -81,3 +68,4 @@ MASTER_LOGIC_FLOW.md
 services\redis_service\data
 
 USAGE_MAKEFILE.md
+

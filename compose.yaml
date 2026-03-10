@@ -672,6 +672,7 @@ services:
       - PYTHONPATH=/ingestion_rag_service
     volumes:
       - ./rag_files:/ingestion_rag_service/rag_files:ro
+      - ./local_models:/ingestion_rag_service/models
     networks:
       - anomaly-detection-network
     deploy: # Nvidia container toolkit (GPU)
