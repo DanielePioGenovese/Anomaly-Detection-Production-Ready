@@ -9,13 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --group spark-services
 
 # Application code
-COPY config/ config/
-COPY src/    src/
-COPY main.py .
+COPY services/langchain_service/config/ config/
+COPY services/langchain_service/src/    src/
 
 # ── Environment defaults (override in docker-compose) ──────────────────────
 ENV MODE=api \

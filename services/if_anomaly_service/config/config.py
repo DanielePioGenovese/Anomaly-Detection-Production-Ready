@@ -12,7 +12,4 @@ class Settings(BaseSettings):
     MCP_API_URL: str = "http://mcp_client:8000"
     CONSUMER_GROUP: str = 'if-anomaly-group'
 
-    class Config:
-        env_file = ".env"
-
 Config = Settings()

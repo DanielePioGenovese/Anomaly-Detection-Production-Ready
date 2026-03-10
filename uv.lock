@@ -1049,27 +1049,6 @@ wheels = [
 ]
 
 [[package]]
-name = "fastembed-gpu"
-version = "0.7.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "huggingface-hub" },
-    { name = "loguru" },
-    { name = "mmh3" },
-    { name = "numpy" },
-    { name = "onnxruntime-gpu" },
-    { name = "pillow" },
-    { name = "py-rust-stemmers" },
-    { name = "requests" },
-    { name = "tokenizers" },
-    { name = "tqdm" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/7e/5647b226baf7abe379e10ed46fb6de47a5838a96e50baa2be855510d792f/fastembed_gpu-0.7.4.tar.gz", hash = "sha256:f0a21792093b355a234685ad48cc16a25fbf091498cf114065ee62c05ada1a05", size = 68862, upload-time = "2025-12-05T12:08:43.517Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/c9/0aecd6914a3b4d7b3431c6d9e5cc7111dfb658cc32bb56e65e6add9e930c/fastembed_gpu-0.7.4-py3-none-any.whl", hash = "sha256:970881d22788165065fdb3873846304a27a5c8ff771c656fa7ff38b7a1d22274", size = 108539, upload-time = "2025-12-05T12:08:42.208Z" },
-]
-
-[[package]]
 name = "fastmcp"
 version = "2.13.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3432,30 +3411,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/6d/eb/6b154dd61cac410cacf27a9f53bbf49f4dbfe5b3982f3f5b0247c7bf7b78/onnxruntime-1.24.2-cp314-cp314-win_arm64.whl", hash = "sha256:6c501aaaaa674e689aaac501e26eb96aba908ebc067fe761fbcbed868bd694a6", size = 12491892, upload-time = "2026-02-19T17:14:54.584Z" },
     { url = "https://files.pythonhosted.org/packages/6f/84/14e5e804836476d3ef6ac07afe3ed6bdf01b69f8ef3ce6ae82c6c80b6d62/onnxruntime-1.24.2-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5360d3fd9c08ce17fff757759ce4b152852be14d597130f41174d8271f954630", size = 15036834, upload-time = "2026-02-19T17:13:33.65Z" },
     { url = "https://files.pythonhosted.org/packages/3a/27/ecdd3ae7d49d9f54820ededce2d88ddc3333b9ac9bb5f1d0d6aa3148c686/onnxruntime-1.24.2-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:05a2792b5ef9278a89415a1f39d0a22192a872168257100503a5157165a38e7b", size = 17117770, upload-time = "2026-02-19T17:14:20.048Z" },
-]
-
-[[package]]
-name = "onnxruntime-gpu"
-version = "1.24.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "flatbuffers" },
-    { name = "numpy" },
-    { name = "packaging" },
-    { name = "protobuf" },
-    { name = "sympy" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/f4/c8050f3f4916ab6c75432724f0ba51c1548dc1c3d66d40c0f8a9611e370f/onnxruntime_gpu-1.24.3-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ac922633819e1cdc81c9b3a28b5e37d788805307bbaa708a01a3d7150e345625", size = 252750845, upload-time = "2026-03-05T16:35:33.604Z" },
-    { url = "https://files.pythonhosted.org/packages/07/b7/81e8936354651915192a362a1718253c6d03da6b902a95237aa392b1d260/onnxruntime_gpu-1.24.3-cp311-cp311-win_amd64.whl", hash = "sha256:0fe6ece3042db149f36f4991cbebd19a690b7ffd82af89450a261b47f4704a37", size = 207192429, upload-time = "2026-03-05T16:39:57.015Z" },
-    { url = "https://files.pythonhosted.org/packages/24/fa/58ceca812214c9c1a286407c376e42e0b7de3e2c6e14b61cdf3caf6d6d9c/onnxruntime_gpu-1.24.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:537bdd6d95006a9200ae81f2e73ba9e621e723fdf0deb5901e2e62fb2cccf876", size = 252756089, upload-time = "2026-03-05T16:35:46.004Z" },
-    { url = "https://files.pythonhosted.org/packages/3c/07/2f36920b513bd8939e25591153e37d9cfda94115bd119f2874da0750fce2/onnxruntime_gpu-1.24.3-cp312-cp312-win_amd64.whl", hash = "sha256:d72065b3ab5fdaef74d8b6b8f39b7ce20d89731610e3e63cb40e997d3dce177e", size = 207197001, upload-time = "2026-03-05T16:40:05.691Z" },
-    { url = "https://files.pythonhosted.org/packages/49/57/9e6206dac76e08f028d2ae95f2ab1b3a7c3317fb6c0374a530aad48dab5c/onnxruntime_gpu-1.24.3-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3242a70010934e5bb0aeaa9dde4c25c6c2da577b55c6308c0caa828ba3b7be23", size = 252753349, upload-time = "2026-03-05T16:35:58.09Z" },
-    { url = "https://files.pythonhosted.org/packages/4e/ae/f0be395602c13a3a8d22fa6632133550a64536c58bc3623abbba5d0a575e/onnxruntime_gpu-1.24.3-cp313-cp313-win_amd64.whl", hash = "sha256:a423b164dbc26cb7f8736367b11698c2a7294748d3c144c39542ecac28d225c9", size = 207197331, upload-time = "2026-03-05T16:40:14.944Z" },
-    { url = "https://files.pythonhosted.org/packages/b4/af/a64c9789769d8d7fabc6d35dcce2f2897b2d9e0fe113044efc2903f7cd07/onnxruntime_gpu-1.24.3-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9696d54974a1313ef0d87f4cbd04f9abfd13839194638d52bb5967a15615341d", size = 252762923, upload-time = "2026-03-05T16:36:10.043Z" },
-    { url = "https://files.pythonhosted.org/packages/c1/bb/1cf7dffac2fb01e8de9f0882438165f7543f0aab57f86d1f587e6faa8528/onnxruntime_gpu-1.24.3-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b8ca744f40b33380bc9136988213e574c927d2b919ed42149977e006b138f74f", size = 252754914, upload-time = "2026-03-05T16:36:30.739Z" },
-    { url = "https://files.pythonhosted.org/packages/cf/39/3949d56103bd9cd9381de59b060f9bce8dc2c7363f465bf207ebd0c7a5d0/onnxruntime_gpu-1.24.3-cp314-cp314-win_amd64.whl", hash = "sha256:c60c44e2b388720e6670a948b52626f3d089e960ef7da66e4fa6b2b33a11116f", size = 209599131, upload-time = "2026-03-05T16:40:24.074Z" },
-    { url = "https://files.pythonhosted.org/packages/f3/60/51bfbcf2d0540dbfa426a73a9b80046b71a63de7303d16c0f2682c8edfd2/onnxruntime_gpu-1.24.3-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:29048407a2398361d93de5537c2d2079d79d720337a0743d4a2cc28db981e776", size = 252764115, upload-time = "2026-03-05T16:36:44.681Z" },
 ]
 
 [[package]]
@@ -5982,10 +5937,8 @@ ingestion = [
     { name = "quixstreams" },
 ]
 ingestion-rag = [
-    { name = "fastembed-gpu" },
     { name = "langchain-community" },
     { name = "langchain-huggingface" },
-    { name = "langchain-openai" },
     { name = "langchain-qdrant" },
     { name = "langchain-text-splitters" },
     { name = "pydantic" },
@@ -6131,10 +6084,8 @@ ingestion = [
     { name = "quixstreams", specifier = ">=3.0.0" },
 ]
 ingestion-rag = [
-    { name = "fastembed-gpu", specifier = ">=0.7.4" },
     { name = "langchain-community", specifier = ">=0.4.1" },
     { name = "langchain-huggingface", specifier = ">=1.2.1" },
-    { name = "langchain-openai", specifier = ">=1.1.10" },
     { name = "langchain-qdrant", specifier = ">=1.1.0" },
     { name = "langchain-text-splitters", specifier = ">=1.1.1" },
     { name = "pydantic", specifier = ">=2.12.5" },

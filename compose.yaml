@@ -37,7 +37,7 @@ services:
     environment:
       KAFKA_BROKERS: redpanda:9092
       KAFKA_SCHEMAREGISTRY_ENABLED: "true"
-      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8080
+      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
     depends_on:
       redpanda:
         condition: service_started
@@ -347,11 +347,11 @@ services:
       redis:
         condition: service_healthy
     environment:
-    - PYTHONUNBUFFERED=1
-    - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
-    - FEAST_REPO_PATH=/streaming_service
-    - DATALAKE_DIR=/data/entity_df        
-    - DATALAKE_FORMAT=parquet
+      - PYTHONUNBUFFERED=1
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - FEAST_REPO_PATH=/streaming_service
+      - DATALAKE_DIR=/data/entity_df        
+      - DATALAKE_FORMAT=parquet
     volumes:
       - ./data/models:/streaming_service/data/models:ro
       - ./data/registry:/data/registry
@@ -537,8 +537,6 @@ services:
     depends_on:
       redpanda:
         condition: service_started
-      mcp_client_api:
-        condition: service_healthy
     command: [ "-m", "src.anomaly_consumer" ]
     environment:
       - PYTHONPATH=/if_anomaly_service
@@ -555,7 +553,7 @@ services:
     build:
       context: .
       dockerfile: services/if_anomaly_service/Dockerfile
-    container_name: create_datasets
+    container_name: fakeproducer
     depends_on:
       redpanda:
         condition: service_started
@@ -626,7 +624,7 @@ services:
   mcp_client_api:
     build:
       context: .
-      dockerfile: services/mcp_client_service/Dockerfile
+      dockerfile: services/mcp_server_service/Dockerfile
     container_name: mcp_client_api
     profiles: [ "online" ]
     depends_on:
@@ -661,13 +659,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 280s
     
   ingestion_rag:
     build:
       context: .
       dockerfile: services/ingestion_rag_service/Dockerfile
     container_name: ingestion_rag_service
+    depends_on:                     
+        qdrant:                        
+          condition: service_healthy 
     environment:
       - PYTHONPATH=/ingestion_rag_service
       - HF_HOME=/ingestion_rag_service/models/hugging_face      
@@ -675,6 +676,8 @@ services:
     volumes:
       - ./rag_files:/ingestion_rag_service/rag_files:ro
       - ./local_models:/ingestion_rag_service/models    
+    networks:
+      - anomaly-detection-network
       
   # --------------------------------------------------------------------------
   # vLLM - Local LLM server (OpenAI-compatible API)
@@ -682,8 +685,8 @@ services:
   # --------------------------------------------------------------------------
   vllm:
     build:
-      context: ./services/vllm_service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/vllm_service/Dockerfile
     container_name: vllm
     profiles: [ "online" ]
     runtime: nvidia                       
@@ -710,8 +713,8 @@ services:
   # --------------------------------------------------------------------------
   langchain_service:
     build:
-      context: ./services/langchain_service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/langchain_service/Dockerfile
     container_name: langchain_service
     profiles: [ "online" ]
     depends_on:
@@ -719,10 +722,13 @@ services:
         condition: service_healthy
       mcp_server:
         condition: service_healthy
+      mcp_client_api:
+        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
-      - MCP_SERVER_URL=http://mcp_server:8020/mcp
+      - MCP_SERVER_URI=http://mcp_server:8020/mcp
       - VLLM_BASE_URL=http://vllm:8000/v1
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
     ports:
       - "8010:8010"
     networks:
@@ -745,7 +751,7 @@ volumes:
     driver: local
   mlflow_data:
     driver: local
-  qdrant_storage:
+  qdrant_data:
     driver: local
   mongodb_data:
     driver: local
