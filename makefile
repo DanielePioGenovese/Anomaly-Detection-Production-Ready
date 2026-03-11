@@ -177,7 +177,7 @@ debug_3:
 	docker compose up --build -d streaming_service
 
 debug_4:
-	docker compose up --build producer_service -d
+	docker compose up --build producer_service -d 
 
 debug_5:
 	docker compose up --build retraining_service
@@ -222,7 +222,7 @@ down-inference:
 
 
 ingestion_rag:
-	docker compose up --build qdrant ingestion_rag
+	docker compose up -d --build qdrant ingestion_rag
 
 block_2:
 	docker compose up --build if_anomaly mongodb vllm mcp_server mcp_client_api langchain_service fakeproducer 

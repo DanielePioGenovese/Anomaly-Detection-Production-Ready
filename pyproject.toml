@@ -158,6 +158,7 @@ mcp-server = [
     "uvicorn>=0.34.0",
 ]
 ingestion-rag = [
+    "fastembed-gpu>=0.7.4",
     "langchain-community>=0.4.1",
     "langchain-huggingface>=1.2.1",
     "langchain-qdrant>=1.1.0",

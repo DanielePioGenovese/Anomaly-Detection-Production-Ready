@@ -1,21 +1,26 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+FROM nvidia/cuda:12.6.0-cudnn-runtime-ubuntu24.04
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_SYSTEM_PYTHON=1 \
-    UV_HTTP_TIMEOUT=300
+    UV_HTTP_TIMEOUT=300 \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.12 python3-dev python3-pip build-essential curl \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/root/.cargo/bin:$PATH"
 
 WORKDIR /ingestion_rag_service
 
 COPY pyproject.toml uv.lock ./
 
-# Cache mount persists the uv download cache on the host across builds
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --group ingestion-rag
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    uv sync --frozen --no-dev --group ingestion-rag \
+    --index "pytorch-cu126=https://download.pytorch.org/whl/cu126"
 
 COPY services/ingestion_rag_service/ ./
 

@@ -598,9 +598,6 @@ services:
       dockerfile: services/mcp_server_service/Dockerfile
     container_name: mcp_server
     profiles: [ "online" ]
-    depends_on:
-      qdrant:
-        condition: service_healthy
     env_file:
       - .env                              # QDRANT_API_KEY
     environment:
@@ -658,31 +655,25 @@ services:
       - "6334:6334" # gRPC API 
     environment:
       - QDRANT__STORAGE__ON_DISK_PAYLOAD=true
-      - ./qdrant_config.yaml:/qdrant/config/production.yaml
     volumes:
       - ./services/mcp_server_service/qdrant/config/qdrant_config.yaml:/qdrant/config/production.yaml 
       - ./qdrant_data:/qdrant/storage
     networks:
       - anomaly-detection-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 280s
+
     
   ingestion_rag:
     build:
       context: .
       dockerfile: services/ingestion_rag_service/Dockerfile
     container_name: ingestion_rag_service
-    depends_on:                     
-        qdrant:                        
-          condition: service_healthy 
+    runtime: nvidia
     environment:
       - PYTHONPATH=/ingestion_rag_service
       - HF_HOME=/ingestion_rag_service/models/hugging_face      
       - FASTEMBED_CACHE_PATH=/ingestion_rag_service/models/fastembed  
+      - NVIDIA_VISIBLE_DEVICES=all           
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility  
     volumes:
       - ./rag_files:/ingestion_rag_service/rag_files:ro
       - ./local_models:/ingestion_rag_service/models    
