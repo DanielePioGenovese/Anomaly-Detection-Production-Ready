@@ -52,7 +52,7 @@ def main():
 
     with app.get_producer() as producer:
         for i in range(1, 50):
-            is_anomaly = 1 if i == 4 else 0
+            is_anomaly = 1 if i in [3,6,9,12,15,28,21,24,27,30] else 0
             payload    = generate_payload("M_0001", is_anomaly, numeric_id=1)
 
             # Serialize exactly like the telemetry producer does

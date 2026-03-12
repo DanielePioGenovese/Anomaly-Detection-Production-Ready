@@ -8,7 +8,7 @@ EXPOSE 8000
 
 # --gpu-memory-utilization: tune down if you have less VRAM
 # --max-model-len:          reduce if you hit OOM on 8 B
-CMD ["--model", "Qwen/Qwen3-8B-Instruct", \
+CMD ["--model", "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
      "--gpu-memory-utilization", "0.90", \

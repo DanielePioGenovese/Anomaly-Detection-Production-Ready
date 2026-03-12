@@ -4,7 +4,7 @@ from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from qdrant.config import retrieval_settings
 from flashrank import Ranker
 from langchain_community.document_compressors import FlashrankRerank
-from langchain.retrievers import ContextualCompressionRetriever
+from langchain_classic.retrievers import ContextualCompressionRetriever
 from langchain_core.documents import Document
 
 def format_docs(docs: list[Document]) -> str:
