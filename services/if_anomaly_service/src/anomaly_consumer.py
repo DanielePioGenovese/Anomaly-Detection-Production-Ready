@@ -82,8 +82,6 @@ def trigger_mcp_investigation(message: dict):
     """
     logger.info(f"🚨 ANOMALY DETECTED: Triggering investigation for {message.get('Machine_ID', 'unknown')}")
     
-    MCP_CLIENT_URL: str = "http://langchain_service:8010"
-
     payload = {
         "message": (
             f"Investigate anomaly for machine {message.get('Machine_ID')}. "

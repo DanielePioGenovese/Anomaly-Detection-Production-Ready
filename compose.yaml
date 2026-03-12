@@ -35,7 +35,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      KAFKA_BROKERS: redpanda:9092
+    KAFKA_BROKERS: redpanda:9092
       KAFKA_SCHEMAREGISTRY_ENABLED: "true"
       KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
     depends_on:
@@ -43,6 +43,12 @@ services:
         condition: service_started
     networks:
       - anomaly-detection-network
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--brokers", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   # ============================================================================
   # REDPANDA INIT - Create Topics
@@ -536,7 +542,7 @@ services:
     profiles: [ "online" ]
     depends_on:
       redpanda:
-        condition: service_started
+        condition: service_healthy
     command: [ "-m", "src.anomaly_consumer" ]
     environment:
       - PYTHONPATH=/if_anomaly_service
@@ -605,7 +611,6 @@ services:
       - MODE=both                         # REST + FastMCP SSE on same port
     ports:
       - "8020:8020"
-    mcp_server:
     depends_on:
       mongodb:
         condition: service_healthy   
