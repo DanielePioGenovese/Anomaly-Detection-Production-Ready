@@ -1,0 +1,10 @@
+[project]
+name = "Washing-Machines-Anomaly-Detection"
+version = "0.1.0"
+description = "Microservices architecture"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "mlflow>=3.9.0",
+]

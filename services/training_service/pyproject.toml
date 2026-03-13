@@ -1,0 +1,15 @@
+[project]
+name = "Washing-Machines-Anomaly-Detection"
+version = "0.1.0"
+description = "Microservices architecture"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "pyarrow>=22.0.0",
+    "mlflow>=3.9.0",
+    "numpy>=2.4.1",
+    "pandas>=2.3.3",
+    "pydantic-settings>=2.11.0",
+    "scikit-learn>=1.8.0",
+]

@@ -1,0 +1,13 @@
+[project]
+name = "Washing-Machines-Anomaly-Detection"
+version = "0.1.0"
+description = "Microservices architecture"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "pyarrow>=22.0.0",
+    "quixstreams>=3.0.0",
+    "confluent-kafka>=2.4,<2.12",
+    "pandas>=2.3.3",
+]

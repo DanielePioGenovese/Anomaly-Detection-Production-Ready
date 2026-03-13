@@ -12,6 +12,7 @@ test_1.py
 bundle_project.py
 project_context.txt
 notes.txt
+pyproject_backup.toml
 
 *.parquet
 
