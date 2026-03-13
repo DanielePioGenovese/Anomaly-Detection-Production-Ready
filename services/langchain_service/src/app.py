@@ -70,7 +70,7 @@ async def chat_stream(req: ChatRequest):
         # Notify operator without blocking the final 'done' message
         # Ensure notify_operator is either async or wrapped in a thread
         try:
-            notify_operator(machine_id=req.machine_id, summary=full_response)
+            await notify_operator(machine_id=req.machine_id, summary=full_response)
         except Exception as e:
             print(f"Failed to notify operator: {e}")
 

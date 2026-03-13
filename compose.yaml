@@ -29,12 +29,6 @@ services:
       - ./redpanda_storage:/var/lib/redpanda/data
     networks:
       - anomaly-detection-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9644/v1/status/ready && rpk cluster health --brokers localhost:9092 | grep -q 'Healthy:.*true' || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 15           
-      start_period: 45s
 
   redpanda-init:
     image: docker.redpanda.com/redpandadata/redpanda:latest
@@ -248,9 +242,6 @@ services:
       dockerfile: services/producer_service/dockerfile
     container_name: telemetry_producer
     # profiles: [ "simulation" ]
-    depends_on:
-      redpanda:
-        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
       - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
@@ -523,9 +514,6 @@ services:
       dockerfile: services/if_anomaly_service/Dockerfile
     container_name: if_anomaly_service
     profiles: [ "online" ]
-    depends_on:
-      redpanda:
-        condition: service_healthy
     command: [ "-m", "src.anomaly_consumer" ]
     environment:
       - PYTHONPATH=/if_anomaly_service
@@ -543,9 +531,6 @@ services:
       context: .
       dockerfile: services/if_anomaly_service/Dockerfile
     container_name: fakeproducer
-    depends_on:
-      redpanda:
-        condition: service_healthy
     command: [ "-m", "src.fakeproducer" ]
     environment:
       - PYTHONPATH=/if_anomaly_service
@@ -601,12 +586,6 @@ services:
     networks:
       - anomaly-detection-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8020/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 2
-      start_period: 600s                   # cross-encoder model load takes time
 
   # ============================================================================
   # MCP CLIENT API - LangGraph agent (Tools → Agent → Thread)
@@ -617,9 +596,6 @@ services:
       dockerfile: services/mcp_server_service/Dockerfile
     container_name: mcp_client_api
     profiles: [ "online" ]
-    depends_on:
-      mcp_server:
-        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
       - MODE=api
@@ -628,12 +604,7 @@ services:
     networks:
       - anomaly-detection-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -713,10 +684,6 @@ services:
     profiles: [ "online" ]
     depends_on:
       vllm:
-        condition: service_healthy
-      mcp_server:
-        condition: service_healthy
-      mcp_client_api:
         condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1

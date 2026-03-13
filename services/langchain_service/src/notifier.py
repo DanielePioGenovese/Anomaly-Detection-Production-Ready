@@ -4,8 +4,7 @@ from config.config import inference_settings
 
 logger = logging.getLogger(__name__)
 
-def notify_operator(machine_id: str, summary: str) -> None:
-    """Send anomaly report to Slack webhook."""
+async def notify_operator(machine_id: str, summary: str) -> None:
     if not inference_settings.slack_webhook_url:
         return
     payload = {
@@ -15,6 +14,7 @@ def notify_operator(machine_id: str, summary: str) -> None:
         )
     }
     try:
-        httpx.post(inference_settings.slack_webhook_url, json=payload, timeout=10)
+        async with httpx.AsyncClient() as client:
+            await client.post(inference_settings.slack_webhook_url, json=payload, timeout=10)
     except Exception as e:
         logger.error(f"Slack notification failed: {e}")

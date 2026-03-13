@@ -13,6 +13,8 @@ bundle_project.py
 project_context.txt
 notes.txt
 pyproject_backup.toml
+test.html
+test.py
 
 *.parquet
 
