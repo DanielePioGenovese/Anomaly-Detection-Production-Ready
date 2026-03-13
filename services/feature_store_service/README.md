@@ -1,183 +1,114 @@
-# Feature Store — API Test Suite
+# Feature Store Service
 
-A complete test suite to verify every aspect of your Feature Store (`anomaly_detection` project).
-Tests are organized in logical order: from system health, to data ingestion, to feature retrieval.
+## Overview
 
----
+Feast-based feature store that acts as the **central feature registry and serving layer** for the anomaly detection system. It defines all entities, data sources, feature views, and the feature service contract consumed by the inference pipeline. It exposes features to online inference via Redis and to offline training via Parquet.
 
-## Architecture Overview
+## File Structure
 
-| Service | Description | External Port |
+```
+services/feature_store_service/
+├── Dockerfile
+└── src/
+    ├── feature_store.yaml      # Project config: registry, online/offline store backends
+    ├── entity.py               # Machine entity definition
+    ├── data_sources.py         # FileSource (batch) and PushSource (streaming) definitions
+    ├── features.py             # FeatureView definitions (schema + TTL + source binding)
+    └── feature_services.py     # FeatureService — versioned feature contract for the model
+```
+
+## Infrastructure
+
+| Backend | Technology | Config |
 |---|---|---|
-| `feature_store_apply` | Runs `feast apply` once to register all feature definitions | — |
-| `feature_store_service` | Serves features over HTTP (`feast serve`) | **8000** → internal 6566 |
-| `redis` | Online store (key TTL configured in `feature_store.yaml`) | 6379 |
-| `redpanda` | Kafka-compatible message broker | 19092 |
+| Online store | Redis | `redis:6379`, key TTL: 24 h |
+| Offline store | File (Parquet) | Local filesystem |
+| Registry | SQLite | `/data/registry/registry.db` |
+| Provider | Local | — |
 
-> **Base URL for all API calls:** `http://localhost:8000`
+## Entity
 
----
+| Entity | Join key | Type | Description |
+|---|---|---|---|
+| `machine` | `Machine_ID` | INT64 | Unique identifier for each washing machine |
 
-## Feature Views at a Glance
+## Data Sources
 
-### `machine_streaming_features` — TTL: 12 hours
-Populated by the real-time pipeline (Quixstreams → `washing_stream_push` PushSource).
+### Batch source
+| Name | Type | Path | Written by |
+|---|---|---|---|
+| `washing_batch_source` | `FileSource` | `/data/offline/machines_batch_features` | PySpark batch pipeline (daily) |
 
-| Field | Type | Description |
+### Streaming sources (PushSource + offline backfill)
+
+| Push source | Backing FileSource path | Used by |
 |---|---|---|
-| `Cycle_Phase_ID` | Int64 | Current wash cycle phase |
-| `Current_L1/L2/L3` | Float32 | Phase currents |
-| `Voltage_L_L` | Float32 | Line-to-line voltage |
-| `Water_Temp_C` | Float32 | Water temperature |
-| `Motor_RPM` | Float32 | Motor speed |
-| `Water_Flow_L_min` | Float32 | Water flow rate |
-| `Vibration_mm_s` | Float32 | Vibration level |
-| `Water_Pressure_Bar` | Float32 | Water pressure |
-| `Current_Imbalance_Ratio` | Float32 | 3-phase imbalance scalar |
-| `Vibration_RollingMax_10min` | Float32 | 10-min rolling max of vibration |
-| `Current_Imbalance_RollingMean_5min` | Float32 | 5-min rolling mean of imbalance ratio |
+| `vibration_push_source` | `/data/offline/streaming_backfill/vibration/` | `machine_streaming_features_10m` |
+| `current_push_source` | `/data/offline/streaming_backfill/current/` | `machine_streaming_features_5min` |
 
-### `machine_batch_features` — TTL: 7 days
-Populated by the batch pipeline (PySpark → partitioned Parquet at `/data/offline/machines_batch_features`).
+Each `PushSource` has a dedicated `FileSource` backing store so point-in-time joins during training still work. The streaming pipeline calls `POST /push` with the source name to write directly into Redis and optionally to the offline backfill.
 
-| Field | Type | Description |
-|---|---|---|
-| `Daily_Vibration_PeakMean_Ratio` | Float32 | max/mean vibration per machine per day |
-| `Weekly_Current_StdDev` | Float32 | Stddev of L1 current per machine per week |
+## Feature Views
 
----
+### `machine_streaming_features_10m`
+| Field | Type | TTL | Source |
+|---|---|---|---|
+| `Vibration_RollingMax_10min` | Float32 | 15 min (10 min window + 5 min grace) | `vibration_push_source` |
 
-## Test Suite
+### `machine_streaming_features_5min`
+| Field | Type | TTL | Source |
+|---|---|---|---|
+| `Current_Imbalance_Ratio` | Float32 | 8 min (5 min window + 3 min grace) | `current_push_source` |
+| `Current_Imbalance_RollingMean_5min` | Float32 | 8 min | `current_push_source` |
 
-### 1. Connection Test (Health Check)
+### `machine_batch_features`
+| Field | Type | TTL | Source |
+|---|---|---|---|
+| `Daily_Vibration_PeakMean_Ratio` | Float32 | 3 years* | `washing_batch_source` |
 
-Verifies that the Feast server is running and can communicate with the Registry (`/data/registry/registry.db`).
+> *TTL is intentionally large for cold-start debugging; production value should be ~7 days.
 
-- **Method:** `GET`
-- **URL:** `http://localhost:8000/health`
-- **Expected result:** `200 OK`. If it fails, check that `feature_store_apply` completed successfully before `feature_store_service` started.
+### Why a separate PushSource per window?
+- Each view has an **independent TTL** matched to its window length — short TTLs for streaming, long for batch
+- The streaming pipeline can push partial records per window with **no stateful merge** step
+- Offline backfill paths are isolated, keeping **point-in-time joins clean**
+- Ownership is explicit: the 10-min vibration signal and the 5-min current signal are independent
 
----
+## Feature Service
 
-### 2. Streaming Ingestion Test (Push API)
+### `machine_anomaly_service_v1`
 
-Simulates sending real-time data as Quixstreams would. Tests whether the `washing_stream_push` PushSource accepts data and writes it to Redis.
+Versioned contract consumed by the inference pipeline. Combines all three views into a single feature vector:
 
-- **Method:** `POST`
-- **URL:** `http://localhost:8000/push`
-- **Body (JSON):**
-
-```json
-{
-  "push_source_name": "washing_stream_push",
-  "df": {
-    "Machine_ID": [1001],
-    "timestamp": ["2026-02-18T20:00:00Z"],
-    "Cycle_Phase_ID": [3],
-    "Current_L1": [12.5],
-    "Current_L2": [11.8],
-    "Current_L3": [12.1],
-    "Voltage_L_L": [400.0],
-    "Water_Temp_C": [60.0],
-    "Motor_RPM": [850.0],
-    "Water_Flow_L_min": [18.5],
-    "Vibration_mm_s": [2.1],
-    "Water_Pressure_Bar": [3.4],
-    "Current_Imbalance_Ratio": [0.03],
-    "Vibration_RollingMax_10min": [2.8],
-    "Current_Imbalance_RollingMean_5min": [0.025]
-  },
-  "to": "online"
-}
+```python
+features=[
+    machine_streaming_features_10m,    # Vibration_RollingMax_10min
+    machine_streaming_features_5min,   # Current_Imbalance_Ratio, Current_Imbalance_RollingMean_5min
+    machine_batch_features,            # Daily_Vibration_PeakMean_Ratio
+]
 ```
 
-- **Expected result:** Empty response `{}` with status `200`. The data is now stored in Redis with a **12-hour TTL**.
+Callers request features by service name, decoupling model code from the underlying view implementation.
 
----
+## Compose Lifecycle
 
-### 3. Online Feature Retrieval Test (Single Entity)
+The service runs in two modes, both using the same image:
 
-Verifies that Feast retrieves the data just pushed to Redis via the `machine_anomaly_service_v1` FeatureService.
-
-- **Method:** `POST`
-- **URL:** `http://localhost:8000/get-online-features`
-- **Body (JSON):**
-
-```json
-{
-  "feature_service": "machine_anomaly_service_v1",
-  "entities": {
-    "Machine_ID": [1001]
-  }
-}
-```
-
-- **Expected result:** A JSON response containing the values pushed in Test #2. The batch features `Daily_Vibration_PeakMean_Ratio` and `Weekly_Current_StdDev` will be `null` until Parquet materialization is run.
-
----
-
-### 4. Multi-Entity Retrieval Test (Batch Retrieval)
-
-Verifies that Feast correctly handles requests for multiple machines simultaneously.
-
-- **Method:** `POST`
-- **URL:** `http://localhost:8000/get-online-features`
-- **Body (JSON):**
-
-```json
-{
-  "feature_service": "machine_anomaly_service_v1",
-  "entities": {
-    "Machine_ID": [1001, 9999]
-  }
-}
-```
-
-- **Expected result:** Two result sets. Machine `1001` returns the pushed data; machine `9999` (which does not exist) returns all `null` values with status `NOT_FOUND`.
-
----
-
-### 5. Type Validation Test (Error Test)
-
-Tests Feast's robustness by sending an incorrect data type — a string where a `Float32` is expected.
-
-- **Method:** `POST`
-- **URL:** `http://localhost:8000/push`
-- **Body (JSON):**
-
-```json
-{
-  "push_source_name": "washing_stream_push",
-  "df": {
-    "Machine_ID": [1001],
-    "timestamp": ["2026-02-18T20:00:00Z"],
-    "Motor_RPM": ["FAST"]
-  },
-  "to": "online"
-}
-```
-
-- **Expected result:** A `400` or `500` error with a message indicating that the string could not be converted to `Float32`.
-
----
-
-### 6. Expiration Test (TTL — Time To Live)
-
-The `machine_streaming_features` view has a `ttl` of **12 hours** (defined in `features.py`). The Redis key TTL is set to **86400 seconds (24 hours)** in `feature_store.yaml`.
-
-- **How to test:** Push data with a timestamp older than 12 hours (e.g., `2025-01-01T10:00:00Z`), then attempt to read it using Test #3.
-- **Push body:** Use the same body as Test #2, replacing the timestamp with `"2025-01-01T10:00:00Z"`.
-- **Expected result:** Status `OUTSIDE_MAX_AGE` or `null` values for all streaming features.
-
----
-
-## Next Steps
-
-Once all tests pass, run **Batch Materialization** to populate the `machine_batch_features` view and eliminate the `null` values for `Daily_Vibration_PeakMean_Ratio` and `Weekly_Current_StdDev`:
+| Compose service | Profile | Command | When |
+|---|---|---|---|
+| `feature_store_apply` | `setup` | `feast apply` | One-time: registers all definitions in the registry |
+| `feature_store_service` | `online` | `feast serve --host 0.0.0.0 --port 6566` | Persistent: serves features via HTTP on port `8000` (mapped from `6566`) |
 
 ```bash
-# Inside the feature_store_service container
-uv run feast materialize-incremental $(date -u +"%Y-%m-%dT%H:%M:%S")
+# Register feature definitions (run once, or after any change to src/)
+docker compose --profile setup run --rm feature_store_apply
+
+# Start the feature server
+docker compose --profile online up feature_store_service
 ```
 
-This reads from the partitioned Parquet files at `/data/offline/machines_batch_features` and loads the computed aggregations into Redis.
+## Build
+
+```bash
+docker build -f services/feature_store_service/Dockerfile -t feature_store_service:latest .
+```

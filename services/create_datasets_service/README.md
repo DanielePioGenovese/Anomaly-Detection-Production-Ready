@@ -1,224 +1,113 @@
-# Industrial Washing Machine Dataset Generator
+# Create Datasets Service
 
-PySpark-based synthetic data generator for **1,000,000 rows** of industrial washing machine sensor data with realistic anomalies.
+## Overview
 
-## 📁 Project Structure
+One-shot PySpark service that synthetically generates **industrial washing machine sensor data** and saves it to Parquet. It is the first step in the data pipeline — nothing downstream can run until it completes successfully.
+
+## File Structure
 
 ```
-services/create_datasets_service/
-├── src/
-│   ├── __init__.py
-│   ├── industrial_washer_generator.py   # Core generator logic
-│   ├── example_usage.py                 # Complete usage examples
-│   ├── spark_configs.py                 # Spark configurations for different environments
-│   └── test_generator.py                # Quick validation tests (10K rows)
-├── config/
-│   ├── __init__.py
-│   └── config.py                        
-└── README.md                            
+services/
+├── dockerfile.spark_services               # Shared image (batch, data_engineering, create_datasets)
+└── create_datasets_service/
+    ├── config/
+    │   ├── __init__.py                     # Exports all config constants
+    │   └── config.py                       # Paths and generation parameters
+    └── src/
+        ├── industrial_washer_generator.py  # Core generator logic
+        ├── example_usage.py                # Entry point (invoked by compose)
+        ├── spark_configs.py                # Spark session presets
+        └── test_generator.py               # Quick validation (10K rows)
 ```
 
-### File Descriptions
+> Uses the same `dockerfile.spark_services` image as `batch_pipeline_service` and `data_engineering_service`.
 
-| File | Purpose |
-|------|---------|
-| `industrial_washer_generator.py` | Main generator with `generate_industrial_washer_datasets()` function |
-| `example_usage.py` | Full demonstration: generate, analyze, save datasets |
-| `test_generator.py` | Quick tests with 10K rows to validate generator |
-| `spark_configs.py` | Pre-configured Spark sessions (local, cluster, AWS, etc.) |
+## What It Generates
 
-## 🚀 Quick Start
+Two datasets, both written to `data/synthetic_datasets/`:
 
-### Generate Datasets
+| Dataset | Path | Description |
+|---|---|---|
+| Normal | `industrial_washer_normal/` | Clean sensor readings, no faults |
+| Anomaly | `industrial_washer_with_anomalies/` | Same data with 2% injected faults + `is_anomaly` label |
+| Normal (streaming) | `industrial_washer_normal_streaming/` | Continuation of normal timestamps for streaming sim |
+| Anomaly (streaming) | `industrial_washer_with_anomalies_streaming/` | Streaming variant with anomalies |
 
+CSV samples (first 10K rows) are also saved alongside each Parquet directory for quick inspection.
+
+## Sensor Schema
+
+| Column | Type | Description |
+|---|---|---|
+| `timestamp` | Timestamp | 1-second intervals, 3 machines report in sync |
+| `Machine_ID` | Int | 1 – 3 |
+| `Cycle_Phase_ID` | Int | 0=Idle, 1=Fill, 2=Heat, 3=Wash, 4=Rinse, 5=Spin, 6=Drain |
+| `Current_L1/L2/L3` | Float | Phase currents (A) — vary by cycle phase |
+| `Voltage_L_L` | Float | Line-to-line voltage (~400 V ±5%) |
+| `Water_Temp_C` | Float | Water temperature (°C) |
+| `Motor_RPM` | Float | Motor speed (0 when idle/filling) |
+| `Water_Flow_L_min` | Float | Water flow rate (L/min) |
+| `Vibration_mm_s` | Float | Vibration level (mm/s) — peaks during Spin |
+| `Water_Pressure_Bar` | Float | Water pressure (bar) |
+| `is_anomaly` | Int | 0/1 — anomaly dataset only |
+
+## Injected Anomaly Types
+
+| Type | Share of anomalies | Affected sensor |
+|---|---|---|
+| Overcurrent | ~35% | `Current_L1/L2/L3` > 50 A |
+| Voltage fault | ~20% | `Voltage_L_L` drop (320–350 V) or spike (450–480 V) |
+| Overheating | ~20% | `Water_Temp_C` 85–100 °C |
+| Excessive vibration | ~15% | `Vibration_mm_s` 15–25 mm/s |
+| Motor malfunction | ~10% | `Motor_RPM` wrong for current phase |
+
+## Configuration (`config.py`)
+
+| Constant | Default | Description |
+|---|---|---|
+| `DATASETS_PATH` | `data/synthetic_datasets` | Output root directory |
+| `DEFAULT_NUM_ROWS` | `1_000_000` | Rows per generated dataset |
+| `DEFAULT_ANOMALY_RATE` | `0.02` | Fraction of anomalous records |
+| `NUM_MACHINES` | `10` | Number of simulated machines |
+| `TIMESTAMP_START` | `2024-01-01 00:00:00` | Start time for training data |
+| `TIMESTAMP_INTERVAL_SECONDS` | `1` | All machines report every second |
+
+## Spark Session Presets (`spark_configs.py`)
+
+| Function | Driver Memory | Use Case |
+|---|---|---|
+| `get_spark_local_dev()` | 2 GB | Quick testing (10K–100K rows) |
+| `get_spark_local_prod()` | 4 GB | Full 1M row generation |
+| `get_spark_high_memory()` | 8 GB | 5M+ rows |
+| `get_spark_cluster()` | 4 GB | Distributed Spark cluster |
+| `get_spark_minimal()` | 1 GB | Constrained environments |
+
+## Run
+
+### Via Docker Compose (standard)
 ```bash
-# Via Docker Compose (recommended)
-docker-compose up create_datasets
-
-# Or run directly
-uv run -m services.create_datasets_service.src.example_usage
+docker compose run --rm create_datasets
 ```
 
-### Basic Usage
-
-```python
-from pyspark.sql import SparkSession
-from industrial_washer_generator import generate_industrial_washer_datasets
-
-# Initialize Spark
-spark = SparkSession.builder \
-    .appName("Washer Data") \
-    .config("spark.driver.memory", "4g") \
-    .getOrCreate()
-
-# Generate 1M rows with 2% anomalies
-normal_df, anomaly_df = generate_industrial_washer_datasets(
-    spark=spark,
-    num_rows=1_000_000,
-    anomaly_rate=0.02
-)
-
-normal_df.show(10)
+`compose.yaml` invokes `example_usage.py` directly:
+```yaml
+command: ["-m", "services.create_datasets_service.src.example_usage"]
+environment:
+  SPARK_DRIVER_MEMORY: 2g
 ```
 
-### Test Before Full Generation
-
+### Quick validation (before full run)
 ```bash
-# Quick validation with 10K rows
-python test_generator.py
+docker compose run --rm create_datasets \
+  uv run python services/create_datasets_service/src/test_generator.py
 ```
+Runs 7 automated checks on a 10K-row sample: row counts, anomaly rate, schema, data ranges, null values, anomaly magnitude, and timestamp uniqueness.
 
-## 📊 Datasets Generated
-
-Creates **FOUR** datasets:
-
-1. **Normal Historical** (1M rows) - Clean sensor data
-2. **Anomaly Historical** (1M rows) - With 2% anomalies + `is_anomaly` label
-3. **Normal Streaming** (100K rows) - Clean streaming data
-4. **Anomaly Streaming** (100K rows) - With 2% anomalies + `is_anomaly` label
-
-### Output Structure
+## Compose Dependencies
 
 ```
-data/synthetic_datasets/
-├── industrial_washer_normal/                           # Historical Parquet (1M)
-├── industrial_washer_with_anomalies/                   # Historical with labels (1M)
-├── industrial_washer_normal_streaming/                 # Streaming Parquet (100K)
-├── industrial_washer_with_anomalies_streaming/         # Streaming with labels (100K)
-├── industrial_washer_normal_sample/                    # CSV sample (10K)
-├── industrial_washer_with_anomalies_sample/            # CSV sample (10K)
-├── industrial_washer_with_anomalies_sample_streaming   # CSV sample (10K)
-└── industrial_washer_normal_sample_streaming/          # CSV sample (10K)
+create_datasets  ──►  data_engineering  ──►  batch_feature_pipeline
+   (completes)           (completes)
 ```
 
-## 🔧 Features (12 Sensors + 1 Label)
-
-| Feature | Description | Unit | Range |
-|---------|-------------|------|-------|
-| `timestamp` | Recording timestamp | DateTime | 30-day span |
-| `Machine_ID` | Machine identifier | Integer | 1-50 |
-| `Cycle_Phase_ID` | Washing cycle phase | Integer | 0-6 |
-| `Current_L1/L2/L3` | Three-phase current | Amperes | 2-35A |
-| `Voltage_L_L` | Line-to-line voltage | Volts | 400V ±5% |
-| `Water_Temp_C` | Water temperature | Celsius | 20-65°C |
-| `Motor_RPM` | Motor speed | RPM | 0-1400 |
-| `Water_Flow_L_min` | Water flow rate | L/min | 0-45 |
-| `Vibration_mm_s` | Vibration level | mm/s | 0.5-8.5 |
-| `Water_Pressure_Bar` | Water pressure | Bar | 0.1-2.8 |
-| `is_anomaly` | Anomaly label | Integer | 0/1 |
-
-## 🔄 Washing Cycle Phases
-
-| ID | Phase | Current | RPM | Description |
-|----|-------|---------|-----|-------------|
-| 0 | Idle | ~2A | 0 | Standby |
-| 1 | Fill_Water | ~8.5A | 0 | Water filling |
-| 2 | Heating | ~35A | ~50 | Water heating |
-| 3 | Wash | ~18.5A | ~80 | Active washing |
-| 4 | Rinse | ~12A | ~70 | Rinsing |
-| 5 | Spin | ~28A | ~1400 | High-speed spinning |
-| 6 | Drain | ~6A | ~10 | Water draining |
-
-## 🚨 Anomaly Types (2% of Data)
-
-| Type | % | Description |
-|------|---|-------------|
-| **Overcurrent** | 30% | Current 2.5-4x higher (motor overload) |
-| **Voltage Issues** | 25% | Drops (320-350V) or spikes (450-480V) |
-| **Overheating** | 20% | Temperature 85-100°C (thermostat failure) |
-| **Excess Vibration** | 15% | 15-25 mm/s (unbalanced load) |
-| **Motor Malfunction** | 10% | Wrong RPM for phase |
-
-## ⚙️ Configuration Options
-
-### Custom Spark Configuration
-
-```python
-from spark_configs import get_spark_local_prod  # 4GB, optimized
-# or get_spark_high_memory()  # 8GB for large datasets
-# or get_spark_minimal()      # 1GB for constrained environments
-
-spark = get_spark_local_prod()
-normal_df, anomaly_df = generate_industrial_washer_datasets(spark, num_rows=1_000_000)
-```
-
-### Custom Parameters
-
-```python
-# Smaller dataset with more anomalies
-normal_df, anomaly_df = generate_industrial_washer_datasets(
-    spark=spark,
-    num_rows=100_000,      # 100K rows
-    anomaly_rate=0.05,     # 5% anomalies
-    streaming=False        # Set True for streaming datasets
-)
-```
-
-## 📈 Data Characteristics
-
-- **Size**: 1M rows (historical), 100K rows (streaming)
-- **Time Span**: 30 days (~2.6 seconds between readings)
-- **Machines**: 50 industrial washers
-- **Anomaly Rate**: 2% (configurable)
-- **File Size**: ~200-300 MB (Parquet compressed)
-- **Realistic**: Three-phase balance, voltage stability, phase-dependent parameters
-
-## 🧪 Testing
-
-```bash
-# Run quick tests (10K rows)
-uv run -m services/create_datasets_service/test_generator.py
-
-## 🐳 Docker Usage
-
-```bash
-# Generate via docker-compose
-docker-compose up create_datasets
-
-# View logs
-docker logs create_datasets
-
-# Access Spark UI (while running)
-http://localhost:4040
-```
-
-## 📚 Integration
-
-```python
-# Use in your ML pipeline
-from industrial_washer_generator import generate_industrial_washer_datasets
-
-spark = SparkSession.builder.appName("ML Pipeline").getOrCreate()
-normal_df, anomaly_df = generate_industrial_washer_datasets(spark, num_rows=1_000_000)
-
-# For training
-X_train = anomaly_df.drop("is_anomaly")
-y_train = anomaly_df.select("is_anomaly")
-
-# For testing
-X_test = normal_df  # Pure normal data for evaluation
-```
-
-## 🔍 Analysis Examples
-
-See `example_usage.py` for comprehensive examples of:
-- Statistical analysis by cycle phase
-- Anomaly distribution analysis
-- Machine-level anomaly tracking
-- Comparison of normal vs anomalous readings
-
-## 🛠️ Customization
-
-Modify parameters in `industrial_washer_generator.py`:
-
-```python
-cycle_phases = {
-    0: {"name": "Idle", "base_current": 2.0, "base_rpm": 0, ...},
-    # Adjust parameters here
-}
-```
-
----
-
-**Generated for Machine Learning Engineers**  
-Part of the Industrial Washing Machine Anomaly Detection System
+Both downstream services declare `condition: service_completed_successfully` on this service.
