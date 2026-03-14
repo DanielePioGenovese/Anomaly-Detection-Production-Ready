@@ -590,20 +590,20 @@ services:
   # ============================================================================
   # MCP CLIENT API - LangGraph agent (Tools → Agent → Thread)
   # ============================================================================
-  mcp_client_api:
-    build:
-      context: .
-      dockerfile: services/mcp_server_service/Dockerfile
-    container_name: mcp_client_api
-    profiles: [ "online" ]
-    environment:
-      - PYTHONUNBUFFERED=1
-      - MODE=api
-    ports:
-      - "8011:8010"
-    networks:
-      - anomaly-detection-network
-    restart: unless-stopped
+  # mcp_client_api:
+  #   build:
+  #     context: .
+  #     dockerfile: services/mcp_server_service/Dockerfile
+  #   container_name: mcp_client_api
+  #   profiles: [ "online" ]
+  #   environment:
+  #     - PYTHONUNBUFFERED=1
+  #     - MODE=api
+  #   ports:
+  #     - "8011:8010"
+  #   networks:
+  #     - anomaly-detection-network
+  #   restart: unless-stopped
 
 
   qdrant:
