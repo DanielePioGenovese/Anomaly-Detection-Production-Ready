@@ -1,11 +1,12 @@
 from manim import *
-from manim_physics import *
 import numpy as np
 
 # Configuration
 config.pixel_height = 1080
 config.pixel_width = 1920
 config.frame_rate = 60
+
+CYAN = "#00FFFF"  
 
 class Overview(Scene):
     """Opening scene - System Overview"""
@@ -170,8 +171,8 @@ class DataPreparationFlow(Scene):
             
             # Draw arrow to next service
             if i < len(services) - 1:
-                arrow = Arrow(start=[service["x"] + 1.6, service["y"] - 0.7],
-                            end=[service["x"] + 1.6, services[i+1]["y"] + 0.7],
+                arrow = Arrow(np.array([service["x"] + 1.6, service["y"] - 0.7, 0]),
+                            np.array([service["x"] + 1.6, services[i+1]["y"] + 0.7, 0]),
                             buff=0.1, color=WHITE, stroke_width=2)
                 self.play(FadeIn(arrow), run_time=0.5)
             
@@ -204,7 +205,7 @@ class StreamingPipelineFlow(Scene):
         self.wait(0.3)
         
         # Arrow to Redpanda
-        arrow1 = Arrow(producer_box.get_right(), [-2, 2, 0], 
+        arrow1 = Arrow(producer_box.get_right(), np.array([-2, 2, 0]), 
                       color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow1), run_time=0.4)
         
@@ -217,7 +218,7 @@ class StreamingPipelineFlow(Scene):
         self.wait(0.3)
         
         # Arrow to streaming service
-        arrow2 = Arrow(redpanda_box.get_right(), [2, 2, 0], 
+        arrow2 = Arrow(redpanda_box.get_right(), np.array([2, 2, 0]), 
                       color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow2), run_time=0.4)
         
@@ -256,7 +257,7 @@ class StreamingPipelineFlow(Scene):
         
         for feature in features:
             # Arrow from streaming service
-            arrow = Arrow([3.5, 2 - 0.5], [3.5, feature["y"] + 0.4], 
+            arrow = Arrow(np.array([3.5, 2 - 0.5, 0]), np.array([3.5, feature["y"] + 0.4, 0]), 
                          color=YELLOW, stroke_width=1.5, buff=0.1)
             self.play(FadeIn(arrow), run_time=0.3)
             
@@ -275,7 +276,7 @@ class StreamingPipelineFlow(Scene):
             self.wait(0.2)
         
         # Final destination: Feast & Redis
-        final_arrow = Arrow([3.5, -1.6], [5.5, -1.6], 
+        final_arrow = Arrow(np.array([3.5, -1.6, 0]), np.array([5.5, -1.6, 0]), 
                            color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(final_arrow), run_time=0.4)
         
@@ -307,7 +308,7 @@ class InferencePipelineFlow(Scene):
         self.wait(0.3)
         
         # Arrow to inference service
-        arrow1 = Arrow(redpanda.get_right(), [-4, 1.5, 0], 
+        arrow1 = Arrow(redpanda.get_right(), np.array([-4, 1.5, 0]), 
                       color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow1), run_time=0.4)
         
@@ -323,7 +324,7 @@ class InferencePipelineFlow(Scene):
         self.wait(0.5)
         
         # Feature retrieval from Feast
-        arrow2 = Arrow([-2, 1], [-2, 0.2], color=YELLOW, stroke_width=2, buff=0.1)
+        arrow2 = Arrow(np.array([-2, 1, 0]), np.array([-2, 0.2, 0]), color=YELLOW, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow2), run_time=0.4)
         
         feast_box = RoundedRectangle(width=3.5, height=1.2, color=CYAN, 
@@ -357,7 +358,7 @@ class InferencePipelineFlow(Scene):
         self.wait(0.5)
         
         # Arrow to model
-        arrow3 = Arrow([-2, -2.4], [-2, -3.2], color=WHITE, stroke_width=2, buff=0.1)
+        arrow3 = Arrow(np.array([-2, -2.4, 0]), np.array([-2, -3.2, 0]), color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow3), run_time=0.4)
         
         # IsolationForest model
@@ -372,7 +373,7 @@ class InferencePipelineFlow(Scene):
         self.wait(0.5)
         
         # Predictions output
-        arrow4 = Arrow([-2, -4.2], [-2, -4.8], color=WHITE, stroke_width=2, buff=0.1)
+        arrow4 = Arrow(np.array([-2, -4.2, 0]), np.array([-2, -4.8, 0]), color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow4), run_time=0.4)
         
         pred_box = RoundedRectangle(width=3, height=0.8, color=RED, 
@@ -405,7 +406,7 @@ class AnomalyInvestigationFlow(Scene):
         self.wait(0.3)
         
         # if_anomaly_service
-        arrow1 = Arrow(trigger_box.get_right(), [-4, 2, 0], 
+        arrow1 = Arrow(trigger_box.get_right(), np.array([-4, 2, 0]), 
                       color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow1), run_time=0.4)
         
@@ -420,7 +421,7 @@ class AnomalyInvestigationFlow(Scene):
         self.wait(0.3)
         
         # Arrow to LangChain
-        arrow2 = Arrow(if_anom_box.get_right(), [0.5, 2, 0], 
+        arrow2 = Arrow(if_anom_box.get_right(), np.array([0.5, 2, 0]), 
                       color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow2), run_time=0.4)
         
@@ -435,7 +436,7 @@ class AnomalyInvestigationFlow(Scene):
         self.wait(0.5)
         
         # MCP Tool call
-        arrow3 = Arrow([2, 1.6], [2, 0.8], color=YELLOW, stroke_width=2, buff=0.1)
+        arrow3 = Arrow(np.array([2, 1.6, 0]), np.array([2, 0.8, 0]), color=YELLOW, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow3), run_time=0.4)
         
         mcp_box = RoundedRectangle(width=3.5, height=0.9, color=CYAN, 
@@ -449,10 +450,10 @@ class AnomalyInvestigationFlow(Scene):
         self.wait(0.3)
         
         # RAG components
-        self.play(Create(Line([-4, -0.3], [6, -0.3], color=GRAY, stroke_width=1)))
+        self.play(Create(Line(np.array([-4, -0.3, 0]), np.array([6, -0.3, 0]), color=GRAY, stroke_width=1)))
         
         # Qdrant
-        arrow4 = Arrow([2, -0.3], [0, -1.2], color=YELLOW, stroke_width=1.5, buff=0.1)
+        arrow4 = Arrow(np.array([2, -0.3, 0]), np.array([0, -1.2, 0]), color=YELLOW, stroke_width=1.5, buff=0.1)
         self.play(FadeIn(arrow4), run_time=0.3)
         
         qdrant_box = RoundedRectangle(width=2.8, height=0.9, color=TEAL, 
@@ -466,7 +467,7 @@ class AnomalyInvestigationFlow(Scene):
         self.wait(0.2)
         
         # MongoDB audit
-        arrow5 = Arrow([2, -0.3], [4, -1.2], color=YELLOW, stroke_width=1.5, buff=0.1)
+        arrow5 = Arrow(np.array([2, -0.3, 0]), np.array([4, -1.2, 0]), color=YELLOW, stroke_width=1.5, buff=0.1)
         self.play(FadeIn(arrow5), run_time=0.3)
         
         mongo_box = RoundedRectangle(width=2.8, height=0.9, color=GREEN, 
@@ -480,10 +481,10 @@ class AnomalyInvestigationFlow(Scene):
         self.wait(0.3)
         
         # Retrieved context back to LangChain
-        arrow6 = Arrow([-1, -2.1], [0, -2.5], color=WHITE, stroke_width=2, buff=0.1)
+        arrow6 = Arrow(np.array([-1, -2.1, 0]), np.array([0, -2.5, 0]), color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow6), run_time=0.3)
         
-        arrow7 = Arrow([5, -2.1], [4, -2.5], color=WHITE, stroke_width=2, buff=0.1)
+        arrow7 = Arrow(np.array([5, -2.1, 0]), np.array([4, -2.5, 0]), color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow7), run_time=0.3)
         
         context_box = RoundedRectangle(width=3.5, height=0.8, color=BLUE, 
@@ -496,7 +497,7 @@ class AnomalyInvestigationFlow(Scene):
         self.wait(0.3)
         
         # Arrow to vLLM
-        arrow8 = Arrow([2, -3.3], [2, -4.1], color=WHITE, stroke_width=2, buff=0.1)
+        arrow8 = Arrow(np.array([2, -3.3, 0]), np.array([2, -4.1, 0]), color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow8), run_time=0.4)
         
         vllm_box = RoundedRectangle(width=3.5, height=0.9, color=YELLOW, 
@@ -510,7 +511,7 @@ class AnomalyInvestigationFlow(Scene):
         self.wait(0.3)
         
         # Final: Slack notification
-        arrow9 = Arrow([2, -5.1], [2, -5.9], color=WHITE, stroke_width=2, buff=0.1)
+        arrow9 = Arrow(np.array([2, -5.1, 0]), np.array([2, -5.9, 0]), color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow9), run_time=0.4)
         
         slack_box = RoundedRectangle(width=3.5, height=0.8, color=PINK, 
@@ -544,7 +545,7 @@ class BatchPipelineFlow(Scene):
         self.wait(0.3)
         
         # Arrow
-        arrow1 = Arrow(airflow_box.get_right(), [-3.5, 2, 0], 
+        arrow1 = Arrow(airflow_box.get_right(), np.array([-3.5, 2, 0]), 
                       color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow1), run_time=0.4)
         
@@ -568,7 +569,7 @@ class BatchPipelineFlow(Scene):
         ]
         
         for op_name, op_desc, y_pos in operations:
-            arrow = Arrow([1.5, 2 - 0.5], [3, y_pos + 0.3], 
+            arrow = Arrow(np.array([1.5, 2 - 0.5, 0]), np.array([3, y_pos + 0.3, 0]), 
                          color=YELLOW, stroke_width=1.5, buff=0.1)
             self.play(FadeIn(arrow), run_time=0.3)
             
@@ -608,7 +609,7 @@ class RetrainingPipelineFlow(Scene):
         self.wait(0.3)
         
         # Arrow
-        arrow1 = Arrow(airflow_box.get_right(), [-3.5, 2, 0], 
+        arrow1 = Arrow(airflow_box.get_right(), np.array([-3.5, 2, 0]), 
                       color=WHITE, stroke_width=2, buff=0.1)
         self.play(FadeIn(arrow1), run_time=0.4)
         
@@ -634,7 +635,7 @@ class RetrainingPipelineFlow(Scene):
         ]
         
         for step_name, step_desc, y_pos in steps:
-            arrow = Arrow([1.5, 2 - 0.5], [3.2, y_pos + 0.3], 
+            arrow = Arrow(np.array([1.5, 2 - 0.5, 0]), np.array([3.2, y_pos + 0.3, 0]), 
                          color=YELLOW, stroke_width=1.5, buff=0.1)
             self.play(FadeIn(arrow), run_time=0.25)
             
@@ -1069,25 +1070,6 @@ class FinalSummary(Scene):
 
 # Main execution
 if __name__ == "__main__":
-    # Uncomment scenes as needed for testing
-    scenes = [
-        Overview,
-        ArchitectureOverview,
-        DataPreparationFlow,
-        StreamingPipelineFlow,
-        BatchPipelineFlow,
-        InferencePipelineFlow,
-        AnomalyInvestigationFlow,
-        RetrainingPipelineFlow,
-        FeatureVectorTable,
-        ColdStartServices,
-        TrainingVsRetraining,
-        StartupOrder,
-        InfrastructureOverview,
-        SystemHighlight,
-        FinalSummary,
-    ]
-    
     print("Animation scenes created successfully!")
     print("Render with: manim -pql anomaly_detection_animation.py [SceneName]")
     print("Or render all: manim -pql anomaly_detection_animation.py")
