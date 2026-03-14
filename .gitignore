@@ -27,6 +27,7 @@ data/
 logs/
 local_models/
 docs_files/
+animations/media/
 
 kafka_storage/
 qdrant_data/
