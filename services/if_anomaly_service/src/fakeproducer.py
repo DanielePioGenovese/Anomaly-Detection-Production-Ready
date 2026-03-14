@@ -27,7 +27,7 @@ def generate_payload(machine_id: str, is_anomaly: int, numeric_id: int) -> dict:
         daily_vib_ratio = str(random.uniform(2.0, 4.0))
 
     return {
-        "machine_id":      machine_id,
+        "Machine_ID":      machine_id,
         "source_timestamp": now_utc.strftime("%Y-%m-%d %H:%M:%S"),
         "scored_at":       now_utc.isoformat(),
         "model_uri":       "models:/if_anomaly_detector/latest",
@@ -57,7 +57,7 @@ def main():
 
             # Serialize exactly like the telemetry producer does
             msg = topic.serialize(
-                key=payload["machine_id"],
+                key=payload["Machine_ID"],
                 value=payload,
             )
             producer.produce(

@@ -76,23 +76,25 @@ def timestamp_extractor(
     return int(timestamp)
 
 def trigger_mcp_investigation(message: dict):
-    """
-    This function handles the side effect of calling the MCP API.
-    """
-    logger.info(f"🚨 ANOMALY DETECTED: Triggering investigation for {message.get('Machine_ID', 'unknown')}")
-    
+    machine_id = str(message.get('Machine_ID', 'unknown'))
+    logger.info(f"🚨 ANOMALY DETECTED: Triggering investigation for {machine_id}")
+
     payload = {
+        "machine_id": machine_id,
         "message": (
-            f"Investigate anomaly for machine {message.get('Machine_ID')}. "
+            f"Investigate anomaly for machine {machine_id}. "
             f"Score: {message.get('anomaly_score'):.3f}. "
             f"Features: {message.get('features')}"
         )
     }
+
     try:
-        with httpx.Client(timeout=30) as client:
-            r = client.post(f"{Config.MCP_API_URL}/chat/stream", json=payload)
-            r.raise_for_status()
-        logger.info("Investigation triggered successfully.")
+        with httpx.Client(timeout=120) as client:
+            with client.stream("POST", f"{Config.MCP_API_URL}/chat/stream", json=payload) as r:
+                r.raise_for_status()
+                for chunk in r.iter_text():
+                    pass  
+        logger.info(f"Investigation triggered successfully for {machine_id}.")
     except Exception as e:
         logger.error(f"Failed to trigger MCP agent: {e}")
 

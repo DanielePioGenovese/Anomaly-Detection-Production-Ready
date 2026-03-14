@@ -38,7 +38,7 @@ services:
     environment:
       KAFKA_BROKERS: redpanda:9092
       KAFKA_SCHEMAREGISTRY_ENABLED: "true"
-      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8080
+      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
     depends_on:
       redpanda:
         condition: service_started
@@ -673,7 +673,8 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - HF_HOME=/root/.cache/huggingface
-      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}   
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - PYTORCH_ALLOC_CONF=expandable_segments:True   
     volumes:
       - ./local_models/hf_cache:/root/.cache/huggingface  
     ports:
