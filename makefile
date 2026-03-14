@@ -228,11 +228,18 @@ ingestion_rag:
 block_2:
 	docker compose up --build redpanda redpanda-console qdrant mongodb if_anomaly vllm mcp_server langchain_service \
 
+# ---------------------------- FINAL DEBUG
+
+init:
+	sudo chown -R 101:101 ./redpanda_storage && mkdir -p .logs && chmod 777 .logs/
 
 full_datasets:
 	docker compose up --build \
 		create_datasets \
 		data_engineering
+
+first_training:
+	docker compose up --build --abort-on-container-exit training_service 
 
 full_architecture:
 	@echo "  🚀 Full Architecture (WITH Airflow)"
@@ -257,10 +264,14 @@ full_architecture:
 		vllm \
 		langchain_service \
 		if_anomaly 
-		
+
 cold_start:
 	docker compose up --build cold_start
 
 full_data_flow:
 	docker compose up \
 		producer_service
+
+
+# sudo chown -R 101:101 ./redpanda_storage
+# 

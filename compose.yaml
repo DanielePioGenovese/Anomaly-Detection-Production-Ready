@@ -66,11 +66,6 @@ services:
     container_name: redis_online_store
     ports:
       - "6379:6379"
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - anomaly-detection-network
 
@@ -79,9 +74,6 @@ services:
     container_name: redis_insight
     ports:
       - "5540:5540" 
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - anomaly-detection-network
     restart: unless-stopped
@@ -94,9 +86,6 @@ services:
       context: .
       dockerfile: services/feature_store_service/Dockerfile
     container_name: feature_store_apply
-    depends_on:
-      redis:
-        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
     volumes:
@@ -118,9 +107,6 @@ services:
       dockerfile: services/feature_store_service/Dockerfile
     container_name: feature_store_service
     profiles: [ "online" ]
-    depends_on:
-      redis:
-        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
       - FEAST_REPO_PATH=/feature_store_service
@@ -163,9 +149,6 @@ services:
       context: .
       dockerfile: services/dockerfile.spark_services
     container_name: data_engineering_service
-    depends_on:
-      create_datasets:
-        condition: service_completed_successfully
     command: [ "-m", "services.data_engineering_service.src.data_engineering" ]
     environment:
       - APP_HOME=/app
@@ -187,9 +170,6 @@ services:
       context: .
       dockerfile: services/dockerfile.spark_services
     container_name: batch_feature_pipeline
-    depends_on:
-      create_datasets:
-        condition: service_completed_successfully
     command: [ "-m", "batch_pipeline_service.src.batch_pipeline" ] 
     environment:
       - APP_HOME=/app
@@ -224,9 +204,6 @@ services:
       dockerfile: utils/cold_start_util/Dockerfile
     container_name: cold_start_util
     profiles: [ "online" ]  
-    depends_on:
-      redis:
-        condition: service_healthy
       # feature_store_service:
       #   condition: service_healthy
     volumes:
@@ -271,11 +248,6 @@ services:
           memory: 4g
         reservations:
           memory: 2g
-    depends_on:
-      mlflow:
-        condition: service_started
-      feature_store_apply:
-        condition: service_completed_successfully
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - PYTHONUNBUFFERED=1
@@ -296,11 +268,6 @@ services:
       context: .
       dockerfile: services/retraining_service/Dockerfile
     container_name: retraining_service
-    depends_on:
-      redis:
-        condition: service_healthy
-      mlflow:
-        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
       - MLFLOW_TRACKING_URI=http://mlflow:5000
@@ -325,9 +292,6 @@ services:
       dockerfile: services/streaming_service/dockerfile
     container_name: streaming_service
     profiles: [ "online" ]
-    depends_on:
-      redis:
-        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
       - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
@@ -374,12 +338,6 @@ services:
     restart: unless-stopped
     networks:
       - anomaly-detection-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
   # ============================================================================
   # INFERENCE SERVICE - Serving Predictions via FastAPI + Redpanda Integration
@@ -390,13 +348,6 @@ services:
       dockerfile: services/inference_service/dockerfile
     container_name: inference_service
     profiles: [ "online" ]
-    depends_on:
-      redis:
-        condition: service_healthy
-      mlflow:
-        condition: service_healthy
-      redpanda-init:
-        condition: service_completed_successfully
     environment:
       - PYTHONUNBUFFERED=1
       - FEAST_REPO_PATH=/inference_service
@@ -423,11 +374,6 @@ services:
       - POSTGRES_USER=airflow
       - POSTGRES_PASSWORD=airflow
       - POSTGRES_DB=airflow
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airflow"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - anomaly-detection-network
 
@@ -456,9 +402,6 @@ services:
       - ./data:/opt/airflow/data
       - /var/run/docker.sock:/var/run/docker.sock 
     user: "${AIRFLOW_UID:-50000}:0"
-    depends_on:
-      postgres_airflow:
-        condition: service_healthy
     networks:
       - anomaly-detection-network
 
@@ -476,9 +419,6 @@ services:
       - ./data:/opt/airflow/data
       - /var/run/docker.sock:/var/run/docker.sock  
     user: "${AIRFLOW_UID:-50000}:0"
-    depends_on:
-      postgres_airflow:
-        condition: service_healthy
     networks:
       - anomaly-detection-network
 
@@ -501,9 +441,6 @@ services:
           --password airflow
     environment: *airflow-common-env
     user: "${AIRFLOW_UID:-50000}:0"
-    depends_on:
-      postgres_airflow:
-        condition: service_healthy
     networks:
       - anomaly-detection-network
 
@@ -555,12 +492,6 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
     networks:
       - anomaly-detection-network
     restart: unless-stopped
@@ -582,9 +513,6 @@ services:
       - QDRANT_COLLECTION=ingestion_rag_service  
     ports:
       - "8020:8020"
-    depends_on:
-      mongodb:
-        condition: service_healthy   
     networks:
       - anomaly-detection-network
     restart: unless-stopped
@@ -668,13 +596,7 @@ services:
       - "8222:8000"
     networks:
       - anomaly-detection-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 20s
-      timeout: 10s
-      retries: 5
-      start_period: 120s                  
+    restart: unless-stopped                
 
   # --------------------------------------------------------------------------
   # LANGCHAIN SERVICE - LangGraph agent (MCP client → vLLM)
@@ -685,9 +607,6 @@ services:
       dockerfile: services/langchain_service/Dockerfile
     container_name: langchain_service
     profiles: [ "online" ]
-    depends_on:
-      vllm:
-        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
       - MCP_SERVER_URI=http://mcp_server:8020/mcp
@@ -698,12 +617,6 @@ services:
     networks:
       - anomaly-detection-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
 networks:
   anomaly-detection-network:

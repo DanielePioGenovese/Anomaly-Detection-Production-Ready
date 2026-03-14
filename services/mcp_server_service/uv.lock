@@ -3598,7 +3598,7 @@ requires-dist = [
     { name = "einops", specifier = ">=0.8.2" },
     { name = "fastapi", specifier = ">=0.129.0" },
     { name = "fastembed", specifier = ">=0.7.4" },
-    { name = "fastmcp", specifier = ">=3.0.0rc1" },
+    { name = "fastmcp", specifier = ">=3.0.0" },
     { name = "flashrank", specifier = ">=0.2.10" },
     { name = "langchain-community", specifier = ">=0.4.1" },
     { name = "langchain-core", specifier = ">=1.2.15" },
