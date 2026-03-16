@@ -11,10 +11,10 @@ class Config:
     # In Docker, we map the directory containing the dataset to /producer/data/streaming_data
     # So we build the path using the mounted volume.
     DATA_DIR = Path('/producer/data/streaming_data')
-    STREAMING_DATASET_NAME = os.getenv('STREAMING_DATASET', 'industrial_washer_with_anomalies_streaming')
+    STREAMING_DATASET_NAME = os.getenv('STREAMING_DATASET', 'industrial_washer_with_anomalies')
     
     # Absolute path to the file
     STREAMING_DATASET = DATA_DIR / STREAMING_DATASET_NAME
 
     BATCH_SIZE = 3
-    BATCH_DELAY_SECONDS = 1
+    BATCH_DELAY_SECONDS = 0.1

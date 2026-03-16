@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # ── Model hyperparameters ─────────────────────────────────────────────────
     class TrainingConfig(BaseModel):
-        contamination: float = 0.02   # expected anomaly rate (e.g. 0.02 = 2 %)
+        contamination: float = 0.2   # expected anomaly rate (e.g. 0.02 = 2 %)
         if_n_estimators: int = 100    # number of trees in IsolationForest
         random_state: int = 42        # reproducibility seed
 
