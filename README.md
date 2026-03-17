@@ -1,10 +1,13 @@
-# Anomaly Detection — Production-Ready MLOps System
-
+# Anomaly Detection — End to End MLOps System
 ## Overview
 
 End-to-end, production-ready anomaly detection system for industrial washing machines. The architecture is built around a **dual-pipeline feature store** pattern that eliminates training-serving skew: the same features computed offline for training are served online at inference time, through a single versioned contract.
 
 The focus of this project is **architectural correctness and service connectivity**, not model accuracy. All sensor data is synthetic. The model is an unsupervised `IsolationForest`. The goal is to demonstrate how a real-time ML system integrates streaming features, batch features, model registry, online inference, RAG-based investigation, and operator notification into a single coherent production stack.
+
+<p align="center">
+  <video src="docs/Architecture.mp4" width="800" autoplay loop muted playsinline></video>
+</p>
 
 ---
 
