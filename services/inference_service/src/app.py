@@ -13,7 +13,7 @@ Data flow:
 """
 
 import logging
-import os
+import random
 from datetime import datetime, timezone
 from typing import Any
 
@@ -266,6 +266,12 @@ def main() -> None:
 
             # ── Run model (uses native IsolationForest decision) ─────────────
             is_anomaly, anomaly_score = predict(model, x)
+
+            is_forced = False
+            if random.random() < 0.05:
+                is_anomaly = 1
+                is_forced = True
+                logger.info("[%s] 🎲 RANDOM INJECTION: Forcing anomaly for testing.", out["machine_id"])
 
             # ── Enrich output ────────────────────────────────────────────────
             out["is_anomaly"]       = is_anomaly
