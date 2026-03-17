@@ -286,6 +286,8 @@ services:
         condition: service_completed_successfull
       streaming_service:
         condition: service_healthy
+      langchain_service:
+        condition: service_healthy
     networks:
       - anomaly-detection-network
     restart: 'no'
