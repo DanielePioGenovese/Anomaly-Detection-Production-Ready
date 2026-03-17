@@ -118,6 +118,9 @@ services:
       - anomaly-detection-network
     restart: 'no'
     profiles: [ "setup" ]
+    depends_on:
+      redis:
+        condition: service_healthy
 
   # ============================================================================
   # FEAST FEATURE SERVER - Serve Features via HTTP API
@@ -140,9 +143,18 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      feature_store_apply:
+        condition: service_completed_successfully
     networks:
       - anomaly-detection-network
     command: [ "uv", "run", "feast", "serve", "--host", "0.0.0.0", "--port", "6566" ]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 6566))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s 
+    restart: unless-stopped
     restart: unless-stopped
 
   # ============================================================================
