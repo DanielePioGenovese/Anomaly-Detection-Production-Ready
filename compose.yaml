@@ -244,6 +244,11 @@ services:
       - ./data/registry:/data/registry
       - ./data/offline:/data/offline
       - ./services/feature_store_service/src:/cold_start_util/feature_store_service:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      feature_store_service:
+        condition: service_healthy
     networks:
       - anomaly-detection-network
     restart: "no"
@@ -313,7 +318,10 @@ services:
       - ./data/offline:/data/offline:ro                                
       - ./data/entity_df:/datalake:ro  
       - ./services/feature_store_service/src:/feature_store:ro         
-      - ./outputs:/outputs                                             
+      - ./outputs:/outputs       
+    depends_on:
+      feature_store_service:
+        condition: service_healthy                              
     networks:
       - anomaly-detection-network
     restart: "no"   # batch job — Airflow re-creates the container each week
@@ -340,6 +348,8 @@ services:
       - ./data/entity_df:/data/entity_df
     depends_on:
       redpanda:
+        condition: service_healthy
+      feature_store_service:
         condition: service_healthy
     networks:
       - anomaly-detection-network
@@ -401,6 +411,8 @@ services:
       - "8001:8000"
     depends_on:
       redpanda:
+        condition: service_healthy
+      feature_store_service:
         condition: service_healthy
     networks:
       - anomaly-detection-network
@@ -510,6 +522,7 @@ services:
     restart: unless-stopped                          
 
 
+  # Used for debugging ONLY
   fakeproducer:
     build:
       context: .
@@ -562,25 +575,6 @@ services:
       - anomaly-detection-network
     restart: unless-stopped
 
-  # ============================================================================
-  # MCP CLIENT API - LangGraph agent (Tools → Agent → Thread)
-  # ============================================================================
-  # mcp_client_api:
-  #   build:
-  #     context: .
-  #     dockerfile: services/mcp_server_service/Dockerfile
-  #   container_name: mcp_client_api
-  #   profiles: [ "online" ]
-  #   environment:
-  #     - PYTHONUNBUFFERED=1
-  #     - MODE=api
-  #   ports:
-  #     - "8011:8010"
-  #   networks:
-  #     - anomaly-detection-network
-  #   restart: unless-stopped
-
-
   qdrant:
     image: qdrant/qdrant:latest
     deploy:
@@ -600,7 +594,6 @@ services:
     networks:
       - anomaly-detection-network
 
-    
   ingestion_rag:
     build:
       context: .
