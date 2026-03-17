@@ -278,4 +278,5 @@ full_data_flow:
 
 clean_data:
 	sudo rm -rf data/offline/streaming_backfill && sudo rm -rf data/entity_df/telemetry_0 && docker compose up create_offline_files && \
-	docker exec -it redpanda rpk topic delete predictions 
+	docker exec -it redpanda-broker rpk topic delete predictions && \
+	docker exec -it redpanda-broker rpk topic delete telemtry-data \

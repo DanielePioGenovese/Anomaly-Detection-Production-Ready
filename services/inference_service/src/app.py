@@ -16,7 +16,6 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
-import json
 
 import mlflow
 import mlflow.sklearn
@@ -33,8 +32,6 @@ from config import Config
 
 logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT)
 logger = logging.getLogger(Config.SERVICE_NAME)
-logger.info("Workdir: %s", os.getcwd())   # BUG FIX: was logging.info (root logger)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MODEL LOADING
@@ -62,11 +59,9 @@ def load_model() -> tuple:
     )
     loaded = mlflow.sklearn.load_model(model_uri)
 
-    # BUG FIX: feature column order was hardcoded — risky if the Feast join
-    # or retrain.py column drops change the order between runs. Load it
-    # directly from the MLflow signature so training and inference are always
-    # in sync with zero manual maintenance.
-    model_info     = mlflow.models.get_model_info(model_uri)
+    # Load feature column order from the MLflow signature so training and
+    # inference are always in sync with zero manual maintenance.
+    model_info = mlflow.models.get_model_info(model_uri)
     feature_columns = [col.name for col in model_info.signature.inputs]
     logger.info("✓ Model loaded — %d features: %s", len(feature_columns), feature_columns)
 
@@ -115,7 +110,7 @@ def feast_get_online_features(
         value  = (res.get("values")   or [None])[0]
         features[name] = value if status == "PRESENT" else None
 
-    logger.info("Feast features: %s", features)   # BUG FIX: was logging.info (root logger)
+    logger.debug("Feast features for Machine %d: %s", machine_id, features)
 
     return features
 
@@ -142,9 +137,7 @@ def build_x(features: dict[str, Any], feature_columns: list[str]) -> pd.DataFram
 
     for col in x.columns:
         if col == "Cycle_Phase_ID":
-            # BUG FIX: pd.to_numeric would silently convert "1" → 1,
-            # bypassing the OneHotEncoder and causing a schema mismatch.
-            # retrain.py casts this to str; inference must do the same.
+            # Keep as string for OneHotEncoder consistency with training
             x[col] = x[col].astype(str)
         else:
             x[col] = pd.to_numeric(x[col], errors="coerce")
@@ -152,34 +145,49 @@ def build_x(features: dict[str, Any], feature_columns: list[str]) -> pd.DataFram
     return x
 
 
-def load_thresholds(filepath: str = "outputs/thresholds.json") -> dict:
-    try:
-        with open(filepath, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        logger.error("File thresholds not found")
-        raise
-
 # ─────────────────────────────────────────────────────────────────────────────
-# PREDICTION HELPER
+# PREDICTION HELPER (UNSUPERVISED - NO THRESHOLDS)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def predict(model, x: pd.DataFrame, threshold: float) -> tuple[int, float, int]:
+def predict(model, x: pd.DataFrame) -> tuple[int, float]:
     """
-    Runs the IsolationForest model and classifies the result using a custom threshold.
+    Run IsolationForest inference using the model's native decision logic.
+    
+    IMPORTANT: This is an UNSUPERVISED model. The contamination parameter
+    set during training determines the decision boundary. We do NOT apply
+    custom thresholds here — we trust the model's built-in classification.
+    
+    Parameters
+    ----------
+    model : sklearn Pipeline
+        The loaded MLflow model (preprocessing + IsolationForest)
+    x : pd.DataFrame
+        Single-row feature DataFrame
+    
+    Returns
+    -------
+    (is_anomaly, anomaly_score)
+        is_anomaly : int
+            1 = anomaly, 0 = normal (mapped from sklearn's -1/+1)
+        anomaly_score : float
+            Anomaly score from score_samples() (lower = more anomalous)
+            Typically ranges from ~-0.5 to ~0.5
     """
+    # Get the raw sklearn prediction: -1 = anomaly, +1 = normal
     raw_label = int(model.predict(x)[0])
-    anomaly_score = float(model.decision_function(x)[0])
-
-    # Replace the native model logic with a custom threshold:
-    # If the score is LOWER than the threshold, it is considered an anomaly.
-    is_anomaly = (
-        Config.OUTPUT_ANOMALY
-        if anomaly_score < threshold
-        else Config.OUTPUT_NORMAL
-    )
-
-    return is_anomaly, anomaly_score, raw_label
+    
+    # Get the anomaly score (consistent with training which used score_samples)
+    # Lower scores = more anomalous
+    # Note: decision_function() and score_samples() are equivalent for IsolationForest
+    preprocessed_x = model.named_steps["pre"].transform(x)
+    anomaly_score = float(model.named_steps["model"].score_samples(preprocessed_x)[0])
+    
+    # Map sklearn convention to output convention:
+    # sklearn: -1 = anomaly, +1 = normal
+    # output:   1 = anomaly,  0 = normal
+    is_anomaly = Config.OUTPUT_ANOMALY if raw_label == -1 else Config.OUTPUT_NORMAL
+    
+    return is_anomaly, anomaly_score
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -190,12 +198,6 @@ def main() -> None:
 
     # 1. Load model + feature column order from MLflow
     model, model_uri, feature_columns = load_model()
-
-
-    thresholds = load_thresholds()
-    chosen_threshold = thresholds["p50"] # o p05, a seconda di quanto vuoi essere severo
-    logger.info("Thresholds set to: %.4f", chosen_threshold)
-
 
     # 2. Open a persistent HTTP session for Feast REST calls
     session = requests.Session()
@@ -228,8 +230,7 @@ def main() -> None:
         machine_id         : canonical string id  (e.g. "M_0001")
         numeric_id         : int entity key used for Feast
         is_anomaly         : 1 = anomaly, 0 = normal
-        anomaly_score      : IsolationForest decision_function value (< 0 = anomaly)
-        isolation_label    : raw sklearn output (-1 or +1)
+        anomaly_score      : IsolationForest score_samples value (< 0 = more anomalous)
         features           : feature snapshot returned by Feast
         missing_features   : list of feature names that were None / not PRESENT
         source_timestamp   : original telemetry event timestamp
@@ -263,13 +264,12 @@ def main() -> None:
             # ── Build aligned feature DataFrame ─────────────────────────────
             x = build_x(features, feature_columns)
 
-            # ── Run model ────────────────────────────────────────────────────
-            is_anomaly, anomaly_score, raw_label = predict(model, x, chosen_threshold)
+            # ── Run model (uses native IsolationForest decision) ─────────────
+            is_anomaly, anomaly_score = predict(model, x)
 
             # ── Enrich output ────────────────────────────────────────────────
             out["is_anomaly"]       = is_anomaly
             out["anomaly_score"]    = round(anomaly_score, 6)
-            out["isolation_label"]  = raw_label
             out["features"]         = features
             out["missing_features"] = missing
 
@@ -299,7 +299,7 @@ def main() -> None:
     )
 
     # 7. Start the consumption loop (blocks until SIGTERM / SIGINT)
-    app.run()   # BUG FIX: was app.run(sdf) — QuixStreams run() takes no arguments
+    app.run()
 
 
 if __name__ == "__main__":
