@@ -144,9 +144,9 @@ services:
       redis:
         condition: service_healthy
       feature_store_apply:
-        condition: service_completed_successfull
+        condition: service_completed_successfully
       create_offline_files:
-        condition: service_completed_successfull
+        condition: service_completed_successfully
     networks:
       - anomaly-detection-network
     command: [ "uv", "run", "feast", "serve", "--host", "0.0.0.0", "--port", "6566" ]
@@ -156,7 +156,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s 
-    restart: unless-stopped
     restart: unless-stopped
 
   # ============================================================================
@@ -200,7 +199,7 @@ services:
       - "4041:4040"
     depends_on:
       create_datasets:
-        condition: service_completed_successfull
+        condition: service_completed_successfully
     networks:
       - anomaly-detection-network
     shm_size: '2gb'
@@ -239,7 +238,7 @@ services:
     volumes:
       - ./data:/data
     depends_on:
-      create_offline_files:
+      data_engineering_service:
         condition: service_completed_succesfully
     networks:
       - anomaly-detection-network
@@ -283,7 +282,7 @@ services:
       redpanda:
         condition: service_healthy
       create_datasets:
-        condition: service_completed_successfull
+        condition: service_completed_successfully
       streaming_service:
         condition: service_healthy
       langchain_service:
@@ -317,7 +316,7 @@ services:
       - ./outputs:/outputs
     depends_on:
       data_engineering:
-        condition: service_completed_successfull
+        condition: service_completed_successfully
       mlflow:
         condition: service_healthy  
     networks:
@@ -453,7 +452,7 @@ services:
       feature_store_service:
         condition: service_healthy
       training_service:
-        condition: service_completed_succesfully
+        condition: service_completed_successfully
     networks:
       - anomaly-detection-network
     restart: unless-stopped
@@ -521,7 +520,7 @@ services:
       postgres_airflow:
         condition: service_healthy
       airflow-init:
-        condition: service_completed_successfull
+        condition: service_completed_successfully
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
@@ -613,7 +612,6 @@ services:
       retries: 5
       start_period: 15s
     ports:
-    ports:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
@@ -671,7 +669,8 @@ services:
     volumes:
       - ./services/mcp_server_service/qdrant/config/qdrant_config.yaml:/qdrant/config/production.yaml 
       - ./qdrant_data:/qdrant/storage
-    test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+    healthcheck:  
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -746,7 +745,8 @@ services:
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
     ports:
       - "8010:8010"
-    test: ["CMD", "python3", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8010))"]
+    healthcheck:  
+      test: ["CMD", "python3", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8010))"]
       interval: 30s
       timeout: 10s
       retries: 3
