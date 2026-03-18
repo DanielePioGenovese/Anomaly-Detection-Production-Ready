@@ -131,13 +131,3 @@ From here you can:
 The inference service resolves `models:/if_anomaly_detector/latest` at startup — no promotion step is required. Every new version registered by the retraining service is automatically picked up on the next container restart.
 
 ---
-
-## 🔗 External References
-
-| Resource | Link |
-|---|---|
-| 📖 MLflow Documentation | [mlflow.org/docs](https://mlflow.org/docs/latest/index.html) |
-| 🗂️ MLflow Model Registry | [Model Registry Guide](https://mlflow.org/docs/latest/model-registry.html) |
-| 🐍 MLflow sklearn flavour | [mlflow.sklearn](https://mlflow.org/docs/latest/python_api/mlflow.sklearn.html) |
-| ⚡ uv — Python package manager | [docs.astral.sh/uv](https://docs.astral.sh/uv/) |
-| 🐳 Docker Compose | [docs.docker.com/compose](https://docs.docker.com/compose/) |

@@ -450,7 +450,8 @@ Each service has its own README with full details on file structure, configurati
 | 🌩️ NVIDIA Container Toolkit | [docs.nvidia.com/datacenter/cloud-native](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/index.html) | GPU support for Docker |
 | 🧠 scikit-learn | [scikit-learn.org/stable/user_guide](https://scikit-learn.org/stable/user_guide.html) | ML models — training, inference, anomaly detection |
 | 🌩️ PySpark | [spark.apache.org/docs/latest/api/python](https://spark.apache.org/docs/latest/api/python/index.html) | Distributed data processing for dataset creation |
-| 🔔 Slack Webhooks | [api.slack.com/messaging/webhooks](https://api.slack.com/messaging/webhooks) | Anomaly alert notifications |
+| 🔔 Slack Webhooks | [api.slack.com/messaging/webhooks](https://api.slack.com/messaging/webhooks) | Anomaly alert 
+| ⚡ uv — Python package manager | [docs.astral.sh/uv](https://docs.astral.sh/uv/) | notifications |
 
 ---
 

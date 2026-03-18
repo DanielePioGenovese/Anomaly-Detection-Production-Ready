@@ -119,10 +119,3 @@ uv run -m services.data_engineering_service.src.data_engineering \
 uv run -m services.data_engineering_service.src.data_engineering \
   --config services/data_engineering_service/config/feature_engineering_config.yaml
 ```
-
-## Compose Position
-
-```
-create_datasets  ──►  data_engineering  ──►  batch_feature_pipeline
-                                         └──►  streaming_service (reads enriched data)
-```

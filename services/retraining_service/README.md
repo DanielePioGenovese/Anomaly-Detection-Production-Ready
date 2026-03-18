@@ -181,7 +181,7 @@ source .venv/bin/activate
 
 ```bash
 # Build image
-docker build -t retraining-service:latest -f services/retraining_service/dockerfile .
+docker build -t retraining_service:latest -f services/retraining_service/dockerfile .
 
 # Run container
 docker run --rm \
@@ -190,34 +190,10 @@ docker run --rm \
   -v $(pwd)/outputs:/outputs \
   -e MLFLOW_TRACKING_URI=http://mlflow:5000 \
   -e FEAST_REPO_PATH=/feature_repo \
-  retraining-service:latest
+  retraining_service:latest
 ```
 
 ## Configuration
-
-### Example `.env` File
-
-```bash
-# MLflow Configuration
-MLFLOW_TRACKING_URI=http://mlflow:5000
-MLFLOW_EXPERIMENT_NAME=isolation_forest_retrain
-MLFLOW_MODEL_NAME=if_anomaly_detector
-
-# Feast Feature Store
-FEAST_REPO_PATH=/feature_repo
-FEATURE_SERVICE_NAME=machine_anomaly_service_v1
-ENTITY_DF_PATH=/datalake/telemetry_data/0
-EVENT_TIMESTAMP_COLUMN=event_timestamp
-
-# Processing Limits
-MAX_FIT_ROWS=50000
-INFERENCE_CHUNK_SIZE=10000
-
-# Model Hyperparameters
-TRAINING__CONTAMINATION=0.02
-TRAINING__IF_N_ESTIMATORS=100
-TRAINING__RANDOM_STATE=42
-```
 
 ### Configuration Differences vs Training Service
 
@@ -233,8 +209,7 @@ TRAINING__RANDOM_STATE=42
 ### Basic Run (Local)
 
 ```bash
-cd services/retraining_service
-uv run -m src.retrain
+docker compose up --build retraining_service
 ```
 
 ### Run via Airflow (Recommended)
@@ -249,7 +224,7 @@ from airflow.providers.docker.operators.docker import DockerOperator
 with DAG('weekly_model_retraining', schedule='@weekly') as dag:
     retrain_task = DockerOperator(
         task_id='retrain_isolation_forest',
-        image='retraining-service:latest',
+        image='retraining_service:latest',
         volumes=[
             '/path/to/feature_repo:/feature_repo',
             '/path/to/datalake:/datalake',
@@ -456,123 +431,3 @@ Week 4: v4 promoted to Production
 │  - Auto-reload latest Production model     │
 └────────────────────────────────────────────┘
 ```
-
-## Troubleshooting
-
-### Issue: Feast connection error
-
-**Cause**: Feast repo path incorrect or feature store not initialized
-
-**Solution**:
-```bash
-# Verify feature_store.yaml exists
-ls /feature_repo/feature_store.yaml
-
-# Re-apply Feast definitions
-cd /feature_repo
-feast apply
-
-# Check registry
-feast registry-dump
-```
-
-### Issue: Empty DataFrame after Feast join
-
-**Cause**: Entity DF timestamps outside feature store data range
-
-**Solution**:
-```bash
-# Check entity_df timestamp range
-python -c "
-import pandas as pd
-df = pd.read_parquet('/datalake/telemetry_data/0')
-print(df['timestamp'].min(), df['timestamp'].max())
-"
-
-# Check offline store materialization range
-feast materialize-incremental --help
-```
-
-### Issue: KeyError: 'event_timestamp'
-
-**Cause**: Timestamp column not named correctly
-
-**Solution**:
-```bash
-# Check actual column name in entity_df
-python -c "
-import pandas as pd
-df = pd.read_parquet('/datalake/telemetry_data/0')
-print(df.columns.tolist())
-"
-
-# Update settings.py or .env
-export EVENT_TIMESTAMP_COLUMN=timestamp  # or actual column name
-```
-
-### Issue: Slow point-in-time join (>5 minutes)
-
-**Cause**: Large entity_df or unoptimized offline store
-
-**Solution**:
-```bash
-# Reduce entity_df size (subsample if acceptable)
-export MAX_FIT_ROWS=20000
-
-# Check offline store format (parquet preferred over SQL)
-# Ensure offline store is partitioned by date
-
-# Optimize Feast config (in feature_store.yaml)
-# Use parquet provider instead of SQLite for large datasets
-```
-
-## Performance Tuning
-
-### For Weekly Production Runs
-
-```bash
-# Recommended configuration
-MAX_FIT_ROWS=100000              # Use more data for stable models
-INFERENCE_CHUNK_SIZE=20000       # Larger chunks (faster)
-TRAINING__IF_N_ESTIMATORS=150    # More trees (better accuracy)
-```
-
-### For Development/Testing
-
-```bash
-# Fast iteration configuration
-MAX_FIT_ROWS=5000                # Quick training
-INFERENCE_CHUNK_SIZE=1000        # Minimal RAM
-TRAINING__IF_N_ESTIMATORS=50     # Fewer trees
-```
-
-## Related Files
-
-- **`training_service/`**: Initial model training (raw parquet input)
-- **`feature_repo/`**: Feast feature definitions
-- **`batch_pipeline/`**: Daily feature computation
-- **`streaming_pipeline/`**: Real-time feature updates
-- **`inference_service/`**: Model deployment and serving
-- **`airflow/`**: Orchestration DAGs (weekly retraining schedule)
-
-## Next Steps
-
-1. **Verify Feast Setup**: Ensure feature store is initialized and materialized
-2. **Configure Paths**: Update `.env` with correct Feast repo and entity_df paths
-3. **Test Manually**: Run `uv run -m src.retrain` to verify end-to-end
-4. **Schedule in Airflow**: Add weekly DAG for automated retraining
-5. **Monitor MLflow**: Check new model versions appear in registry
-6. **Promote Models**: Move best versions to "Production" stage
-
-## Key Metrics to Monitor
-
-**Weekly Retraining Health:**
-- **anomaly_rate**: Should remain stable (~2%) across weeks
-- **score_mean/std**: Large shifts indicate data distribution changes
-- **train_time_sec**: Sudden increases suggest data growth
-- **feature_loading_time**: Monitor Feast join performance
-
-**Model Quality Drift:**
-- Compare score distributions across model versions
-- Alert if anomaly_rate deviates >5% from expected contamination
-- Track p95/p99 percentiles for threshold stability

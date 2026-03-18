@@ -102,12 +102,3 @@ docker compose run --rm create_datasets \
   uv run python services/create_datasets_service/src/test_generator.py
 ```
 Runs 7 automated checks on a 10K-row sample: row counts, anomaly rate, schema, data ranges, null values, anomaly magnitude, and timestamp uniqueness.
-
-## Compose Dependencies
-
-```
-create_datasets  ──►  data_engineering  ──►  batch_feature_pipeline
-   (completes)           (completes)
-```
-
-Both downstream services declare `condition: service_completed_successfully` on this service.
