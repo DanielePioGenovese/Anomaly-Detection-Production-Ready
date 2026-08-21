@@ -1,0 +1,24 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  check-app:
+    runs-on: ubuntu
+
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@4
+
+      - name: Uv Installation
+        uses: astral-sh/setup-uv@5
+        with:
+          enable-cache: True
+
+      - name: Environment setup
+        run: |
+          uv python install 
+          uv sync 
+
+      - name: Pytest Check
+        run: uv run pytest .
